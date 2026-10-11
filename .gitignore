@@ -1,0 +1,6 @@
+# 运行期生成的敏感数据,绝不提交
+config.json
+data/
+*.csv
+.env
+node_modules/
