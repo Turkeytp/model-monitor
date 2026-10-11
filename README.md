@@ -115,3 +115,16 @@ docker compose down
 - 明文 API Key **永不返回**给前端/外网（`/api/models` 仅返回尾 4 位掩码）。
 - `config.json` / `data/` 为运行期数据，由 `.dockerignore` + `.gitignore` 排除，**绝不进镜像、绝不进仓库**。
 - 公网部署务必设置 `ACCESS_TOKEN` 与 `ALLOWED_ORIGINS`（CORS 白名单），避免匿名写 `/api/observe` 注入脏数据。
+
+### 已加固项
+
+| 项 | 说明 |
+|---|---|
+| 存储型 XSS | 仪表盘渲染 `s.error` 一律经 `escapeHtml()` 转义（含单引号），杜绝被动观测注入的 HTML/JS 被执行 |
+| CORS Origin 反射 | 未配置 `ALLOWED_ORIGINS` 时**不**设置 `Access-Control-Allow-Origin`（不再回显任意 Origin / `null`），跨域响应不可读 |
+| SSRF | 新增 `isBlockedUrl()`：拒绝内网/环回/链路本地/云元数据网段，DNS 解析后复查；默认仅允许 `https` 端点（`ALLOW_HTTP_ENDPOINTS=1` 可放宽），并拒绝 `javascript:`/`data:` 等非法协议 |
+| 远程 DoS | `/api/models/<id>` 路径解码加 try/catch 防崩溃；进程级 `uncaughtException`/`unhandledRejection` 兜底 |
+| 限流绕过 | `clientIp()` 不再无条件信任 `X-Forwarded-For`，仅 `TRUST_PROXY=1` 时解析，否则用 socket 真实地址 |
+| 数据污染 | `/api/observe` 强制使用服务端时间戳，`ttftMs`/`totalMs` 设 0~600s 上下限，`error` 截断 500 字 |
+| CSV 注入 | `appendCsv` 对 `model`/`error`/`source` 做标准 CSV 转义，公式前缀（`=`/`+`/`-`/`@`）前置单引号 |
+| 容器最小权限 | Dockerfile `USER node`（非 root），挂载 `data/` 卷 |
