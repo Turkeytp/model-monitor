@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" id="htmlRoot">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -119,21 +119,24 @@
 
   .notice { margin-top: 20px; font-size: 13px; color: var(--muted); background: #fffbeb; border: 1px solid #fde68a; border-radius: 12px; padding: 14px 16px; line-height: 1.7; }
   .notice code { background: #f3f4f6; padding: 1px 6px; border-radius: 5px; font-size: 12px; }
+  .lang-toggle { font-size: 12px; padding: 4px 10px; border-radius: 8px; border: 1px solid var(--line); background: #fff; color: var(--ink); cursor: pointer; font-family: inherit; font-weight: 600; }
+  .lang-toggle:hover { background: #f0f9ff; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <header class="top">
     <div class="title">
-      <h1>自定义模型繁忙度监控</h1>
-      <p>实时探测各模型 API 的首包延迟 / 总延迟 / 可用性，推断繁忙程度</p>
+      <h1 id="mainTitle">自定义模型繁忙度监控</h1>
+      <p id="mainSub">实时探测各模型 API 的首包延迟 / 总延迟 / 可用性，推断繁忙程度</p>
     </div>
     <div class="meta">
       <span><span id="connDot" class="dot"></span><span id="connText">连接中…</span></span>
       <span id="srcBadge" class="badge sim">模拟</span>
       <span id="updated">—</span>
       <button id="probeBtn" class="btn">⟳ 立即探测</button>
-      <a class="dlbtn" href="/settings">⚙ 设置</a>
+      <a id="settingsLink" class="dlbtn" href="/settings">⚙ 设置</a>
+      <button id="langToggle" class="lang-toggle" type="button">EN</button>
     </div>
   </header>
 
@@ -143,7 +146,7 @@
 
   <div class="chart-card">
     <div class="chart-head">
-      <h2>繁忙度趋势</h2>
+      <h2 id="chartTitle">繁忙度趋势</h2>
       <div class="ctrl">
         <div class="dd" id="dd">
           <button class="dd-btn" id="ddBtn" type="button">
@@ -177,7 +180,138 @@
 
 <script>
   // 版本戳，强制浏览器重新下载本文件
-  window.__MM_VERSION = '20261006-2003';
+  window.__MM_VERSION = '20261006-2004';
+
+  // ---- i18n 翻译 ----
+  const I18N = {
+    zh: {
+      mainTitle: '自定义模型繁忙度监控',
+      mainSub: '实时探测各模型 API 的首包延迟 / 总延迟 / 可用性，推断繁忙程度',
+      connecting: '连接中…',
+      live: '实时连接',
+      pollFallback: 'SSE 断开，转轮询',
+      sim: '模拟',
+      real: '真实',
+      updated: '更新',
+      probeNow: '⟳ 立即探测',
+      probing: '探测中…',
+      settings: '⚙ 设置',
+      chartTitle: '繁忙度趋势',
+      selectModel: '选择模型',
+      filterPlaceholder: '筛选模型 / 提供商…',
+      range30m: '30分',
+      range2h: '2时',
+      range12h: '12时',
+      range24h: '24时',
+      range7d: '7天',
+      downloadCsv: '下载CSV',
+      points: '共',
+      samplingPoints: '个采样点',
+      provAll: '全部',
+      lvlIdle: '空闲',
+      lvlNormal: '正常',
+      lvlBusy: '繁忙',
+      lvlHeavy: '拥堵',
+      lvlUnreachable: '不可达',
+      total: '总数',
+      ttftLabel: '首包',
+      totalMsLabel: '总延迟',
+      tpsLabel: '吞吐',
+      statusLabel: '状态',
+      stNormal: '正常',
+      stFail: '失败',
+      quotaLabel: '配额',
+      srcActive: '主动',
+      srcPassive: '被动',
+      srcMix: '混合',
+      noMatch: '无匹配模型',
+      noticeHint: '提示：',
+      authPrompt: '该服务已启用访问鉴权。请输入访问令牌：',
+      noticeSim: '当前为<strong>模拟模式</strong>，展示的是演示数据（各模型轨迹不同）。接入真实监控：编辑 <code>config.json</code>，把 <code>simulate</code> 改为 <code>false</code> 后重启本服务。',
+      noticeReal: '真实探测模式：每 {min}~{max} 分钟自动探测一次各模型 API 的延迟与可用性。需要增删模型请前往 <a class="dlbtn" href="/settings">⚙ 设置</a>。',
+      providerUnknown: '未知',
+    },
+    en: {
+      mainTitle: 'Custom Model Busy Monitor',
+      mainSub: 'Probe TTFT / total latency / availability of each model API to infer busy level',
+      connecting: 'Connecting…',
+      live: 'Live',
+      pollFallback: 'SSE down, polling',
+      sim: 'Sim',
+      real: 'Real',
+      updated: 'Updated',
+      probeNow: '⟳ Probe Now',
+      probing: 'Probing…',
+      settings: '⚙ Settings',
+      chartTitle: 'Busy Trend',
+      selectModel: 'Select Model',
+      filterPlaceholder: 'Filter model / provider…',
+      range30m: '30m',
+      range2h: '2h',
+      range12h: '12h',
+      range24h: '24h',
+      range7d: '7d',
+      downloadCsv: 'CSV',
+      points: '',
+      samplingPoints: ' points',
+      provAll: 'All',
+      lvlIdle: 'Idle',
+      lvlNormal: 'Normal',
+      lvlBusy: 'Busy',
+      lvlHeavy: 'Heavy',
+      lvlUnreachable: 'Unreachable',
+      total: 'Total',
+      ttftLabel: 'TTFT',
+      totalMsLabel: 'Total',
+      tpsLabel: 'T/s',
+      statusLabel: 'Status',
+      stNormal: 'OK',
+      stFail: 'Fail',
+      quotaLabel: 'Quota',
+      srcActive: 'Active',
+      srcPassive: 'Passive',
+      srcMix: 'Mixed',
+      noMatch: 'No match',
+      noticeHint: 'Note:',
+      authPrompt: 'This service requires authentication. Please enter the access token:',
+      noticeSim: 'Currently in <strong>simulation mode</strong> — demo data is shown (each model has a different trajectory). To monitor real models: edit <code>config.json</code>, set <code>simulate</code> to <code>false</code>, then restart the service.',
+      noticeReal: 'Real probe mode: auto-probes model API latency & availability every {min}~{max} min. To add/remove models, go to <a class="dlbtn" href="/settings">⚙ Settings</a>.',
+      providerUnknown: 'Unknown',
+    }
+  };
+  let curLang = localStorage.getItem('mm_lang') || 'zh';
+  function t(key) {
+    const dict = I18N[curLang] || I18N.zh;
+    return dict[key] !== undefined ? dict[key] : (I18N.zh[key] !== undefined ? I18N.zh[key] : key);
+  }
+  function setLevelName(zhLevel) {
+    const map = { '空闲': t('lvlIdle'), '正常': t('lvlNormal'), '繁忙': t('lvlBusy'), '拥堵': t('lvlHeavy'), '不可达': t('lvlUnreachable'), '总数': t('total') };
+    return map[zhLevel] !== undefined ? map[zhLevel] : zhLevel;
+  }
+  function applyI18n() {
+    document.getElementById('htmlRoot').lang = curLang === 'zh' ? 'zh-CN' : 'en';
+    document.title = t('mainTitle');
+    document.getElementById('mainTitle').textContent = t('mainTitle');
+    document.getElementById('mainSub').textContent = t('mainSub');
+    document.getElementById('connText').textContent = t('connecting');
+    document.getElementById('probeBtn').textContent = t('probeNow');
+    document.getElementById('langToggle').textContent = curLang === 'zh' ? 'EN' : '中';
+    document.getElementById('chartTitle').textContent = t('chartTitle');
+    document.getElementById('ddLabel').textContent = t('selectModel');
+    document.getElementById('ddFilter').placeholder = t('filterPlaceholder');
+    document.getElementById('dlCsv').textContent = t('downloadCsv');
+    document.getElementById('settingsLink').textContent = t('settings');
+    document.getElementById('srcBadge').textContent = t('sim');
+    // 范围按钮
+    const rangeBtns = document.querySelectorAll('#ranges button');
+    const rangeLabels = [t('range30m'), t('range2h'), t('range12h'), t('range24h'), t('range7d')];
+    rangeBtns.forEach((b, i) => { if (rangeLabels[i]) b.textContent = rangeLabels[i]; });
+    // 重新渲染动态部分（会调用 applyMode 和 renderCards）
+    applyMode(lastCfg);
+    renderCards();
+  }
+  let lastCfg = null;
+
   const LEVEL_COLOR = { '空闲':'var(--idle)', '正常':'var(--normal)', '繁忙':'var(--busy)', '拥堵':'var(--heavy)', '不可达':'#7f1d1d' };
   const LEVEL_COLOR_NAME = { '空闲':'空闲', '正常':'正常', '繁忙':'繁忙', '拥堵':'拥堵', '不可达':'不可达' };
   const INREACHABLE_COLOR = '#7f1d1d'; // 暗红色用于不可达
@@ -217,13 +351,13 @@
   const PALETTE = ['#2563eb','#7c3aed','#db2777','#ea580c','#16a34a','#0891b2','#dc2626','#4f46e5','#ca8a04','#0d9488','#9333ea','#65a30d'];
   const providerColor = {};        // 提供商名 -> 颜色（一旦分配不再变动）
 
-  // 提供商：优先取 vendor；若为 Custom/自定义 这类占位值，则用 name（WorkBuddy 自定义模型里 name 常是提供商）
+    // 提供商：优先取 vendor；若为 Custom/自定义 这类占位值，则用 name（WorkBuddy 自定义模型里 name 常是提供商）
   function providerOf(s) {
-    if (!s) return '未知';
+    if (!s) return t('providerUnknown');
     const v = String(s.vendor == null ? '' : s.vendor).trim();
     if (v && !/^(custom|自定义|其他|other)$/i.test(v)) return v;
     const n = String(s.name == null ? '' : s.name).trim();
-    return n || '未知';
+    return n || t('providerUnknown');
   }
   // 模型名称：name 与提供商同名时，说明名称字段实际是提供商，此时用 id 作为模型名
   function modelLabel(s) {
@@ -241,8 +375,8 @@
   }
   // 排序：先按提供商（拉丁名在前、中文名在后），再按模型名称（自然序，数字不按字符串比）
   function provKey(p) {
-    const t = String(p == null ? '' : p);
-    return (t.charCodeAt(0) < 128 ? '0' : '1') + t.toLowerCase();
+    const pv = String(p == null ? '' : p);
+    return (pv.charCodeAt(0) < 128 ? '0' : '1') + pv.toLowerCase();
   }
   function sortedIds() {
     return order.slice().sort((a, b) => {
@@ -262,19 +396,19 @@
     els.connText.textContent = text;
   }
   function fmtTime(ts) {
-    return new Date(ts).toLocaleTimeString('zh-CN', { hour12: false });
+    return new Date(ts).toLocaleTimeString(curLang === 'en' ? 'en-US' : 'zh-CN', { hour12: false });
   }
   // 根据 config 渲染顶部徽标与底部提示（真实/模拟）
   function applyMode(cfg) {
+    lastCfg = cfg;
     if (!cfg) return;
     const real = !cfg.simulate;
-    els.srcBadge.textContent = real ? '真实' : '模拟';
+    els.srcBadge.textContent = t(real ? 'real' : 'sim');
     els.srcBadge.className = 'badge ' + (real ? 'real' : 'sim');
     if (real) {
-      els.notice.innerHTML = '真实探测模式：每 ' + (cfg.intervalMin || 9) + '~' + (cfg.intervalMax || 10) +
-        ' 分钟自动探测一次各模型 API 的延迟与可用性。需要增删模型请前往 <a class="dlbtn" href="/settings">⚙ 设置</a>。';
+      els.notice.innerHTML = t('noticeReal').replace('{min}', cfg.intervalMin || 9).replace('{max}', cfg.intervalMax || 10);
     } else {
-      els.notice.innerHTML = '当前为<strong>模拟模式</strong>，展示的是演示数据（各模型轨迹不同）。接入真实监控：编辑 <code>config.json</code>，把 <code>simulate</code> 改为 <code>false</code> 后重启本服务。';
+      els.notice.innerHTML = t('noticeSim');
     }
   }
 
@@ -305,7 +439,7 @@
     ensureProviderColors(allIds);
     const provs = [];
     allIds.forEach(id => { const s = snaps[id]; if (!s) return; const p = providerOf(s); if (provs.indexOf(p) < 0) provs.push(p); });
-    let provHtml = '<div class="prov-btn ' + (selectedProv === 'all' ? 'on' : '') + '" data-prov="all"><span class="pv-n">' + counts['总数'] + '</span><span class="pv-k"><span class="pv-dot" style="background:var(--muted)"></span>全部</span></div>';
+    let provHtml = '<div class="prov-btn ' + (selectedProv === 'all' ? 'on' : '') + '" data-prov="all"><span class="pv-n">' + counts['总数'] + '</span><span class="pv-k"><span class="pv-dot" style="background:var(--muted)"></span>' + t('provAll') + '</span></div>';
     provs.forEach(p => {
       const n = allIds.filter(x => snaps[x] && providerOf(snaps[x]) === p).length;
       const isOn = selectedProv === p;
@@ -317,7 +451,7 @@
     const levelCounts = ['空闲','正常','繁忙','拥堵','不可达'].map(k => {
       const v = counts[k] || 0;
       const color = k === '空闲' ? 'var(--idle)' : k === '正常' ? 'var(--normal)' : k === '繁忙' ? 'var(--busy)' : k === '拥堵' ? 'var(--heavy)' : 'var(--inreachable)';
-      return '<div class="sum" style="color:' + color + '"><div class="n">' + v + '</div><div class="k">' + k + '</div></div>';
+      return '<div class="sum" style="color:' + color + '"><div class="n">' + v + '</div><div class="k">' + setLevelName(k) + '</div></div>';
     }).join('');
     provHtml += levelCounts;
     els.filterRow.innerHTML = provHtml;
@@ -354,15 +488,15 @@
       const ttft = s.ttftMs == null ? '—' : s.ttftMs + '<small>ms</small>';
       const total = s.totalMs == null ? '—' : s.totalMs + '<small>ms</small>';
       const tps = s.tokensPerSec == null ? '—' : Math.round(s.tokensPerSec) + '<small>t/s</small>';
-      const status = s.available ? '<b style="color:var(--idle)">正常</b>' : '<b style="color:var(--heavy)">失败</b>';
+      const status = s.available ? '<b style="color:var(--idle)">'+t('stNormal')+'</b>' : '<b style="color:var(--heavy)">'+t('stFail')+'</b>';
       const ttftWarn = s.ttftMs != null && s.ttftMs >= 2500;
       const totalWarn = s.totalMs != null && s.totalMs >= 3000;
       const err = s.error ? '<div class="merr">⚠ ' + escapeHtml(String(s.error)) + (s.status ? ' (HTTP ' + escapeHtml(String(s.status)) + ')' : '') + '</div>' : '';
-      const srcText = s.hasPassive ? (s.source === 'passive' ? '被动' : '混合') : '主动';
+      const srcText = s.hasPassive ? (s.source === 'passive' ? t('srcPassive') : t('srcMix')) : t('srcActive');
       const srcClass = s.hasPassive ? (s.source === 'passive' ? 'src-passive' : 'src-mix') : 'src-active';
       const info =
         (s.busy && s.busy.throttleNote ? '<div class="minfo warn">'+escapeHtml(s.busy.throttleNote)+'</div>' : '') +
-        ((s.rateLimitRemaining != null && s.rateLimitLimit != null) ? '<div class="minfo">配额 '+s.rateLimitRemaining+'/'+s.rateLimitLimit+'</div>' : '');
+        ((s.rateLimitRemaining != null && s.rateLimitLimit != null) ? '<div class="minfo">'+t('quotaLabel')+' '+s.rateLimitRemaining+'/'+s.rateLimitLimit+'</div>' : '');
       return '' +
         '<div class="mcard'+(id===selectedId?' sel':'')+'" data-id="'+escapeHtml(id)+'" style="border-left-color:'+pc+'">' +
           '<div class="mhead"><span class="mname">'+escapeHtml(label)+'</span><span class="mtag '+srcClass+'">'+srcText+'</span></div>' +
@@ -374,13 +508,13 @@
                 '<circle class="ring-val" cx="46" cy="46" r="'+RING_R+'" fill="none" stroke="'+color+'" stroke-width="9" stroke-linecap="round" transform="rotate(135 46 46)" stroke-dasharray="'+((b.score / 100) * RING_VIS).toFixed(1)+' '+FULL_C+'"/>' +
               '</svg>' +
               '<div class="num">'+b.score+'</div>' +
-              '<div class="lvl" style="color:'+color+'">'+b.level+'</div>' +
+              '<div class="lvl" style="color:'+color+'">'+setLevelName(b.level)+'</div>' +
             '</div>' +
             '<div class="mstats">' +
-              '<div class="st'+(ttftWarn?' warn':'')+'">首包<b>'+ttft+'</b></div>' +
-              '<div class="st'+(totalWarn?' warn':'')+'">总延迟<b>'+total+'</b></div>' +
-              '<div class="st">吞吐<b>'+tps+'</b></div>' +
-              '<div class="st">状态'+status+'</div>' +
+              '<div class="st'+(ttftWarn?' warn':'')+'">'+t('ttftLabel')+'<b>'+ttft+'</b></div>' +
+              '<div class="st'+(totalWarn?' warn':'')+'">'+t('totalMsLabel')+'<b>'+total+'</b></div>' +
+              '<div class="st">'+t('tpsLabel')+'<b>'+tps+'</b></div>' +
+              '<div class="st">'+t('statusLabel')+status+'</div>' +
             '</div>' +
           '</div>' + info + err +
         '</div>';
@@ -418,12 +552,12 @@
         '<span class="pdot" style="background:'+colorFor(providerOf(s))+'"></span>' +
         '<span class="t">'+escapeHtml(modelLabel(s)||id)+'</span>' +
         '<span class="p">'+escapeHtml(providerOf(s))+'</span></div>';
-    }).join('') : '<div class="dd-empty">无匹配模型</div>';
+    }).join('') : '<div class="dd-empty">' + t('noMatch') + '</div>';
 
     const cur = selectedId && snaps[selectedId] ? snaps[selectedId] : null;
     els.ddLabel.innerHTML = cur
       ? '<span class="pdot" style="background:'+colorFor(providerOf(cur))+'"></span><span>'+escapeHtml(modelLabel(cur)||selectedId)+'</span>'
-      : '选择模型';
+      : t('selectModel');
 
     els.ddList.querySelectorAll('.dd-item').forEach(el => {
       el.addEventListener('click', () => {
@@ -521,7 +655,7 @@
       ctx.fillStyle = '#0ea5e9';
       ctx.beginPath(); ctx.arc(xFor(pts.length - 1), yFor(last.s), 3, 0, Math.PI * 2); ctx.fill();
     }
-    els.chartHint.textContent = '共 ' + pts.length + ' 个采样点' + (selectedId ? ' · ' + selectedId : '');
+    els.chartHint.textContent = t('points') + ' ' + pts.length + ' ' + t('samplingPoints') + (selectedId ? ' · ' + selectedId : '');
   }
   // 自定义下拉交互
   els.ddBtn.addEventListener('click', (e) => {
@@ -554,16 +688,16 @@
     } catch (e) { return ''; }
   }
   function authQuery() {
-    const t = getToken();
-    return t ? ('?token=' + encodeURIComponent(t)) : '';
+    const tk = getToken();
+    return tk ? ('?token=' + encodeURIComponent(tk)) : '';
   }
   function apiFetch(path, opts) {
     // 若有 token，注入到 URL 查询参数（服务端 /api/* 支持 ?token= 鉴权）
-    const t = getToken();
-    const finalPath = t ? path + (path.indexOf('?') >= 0 ? '&' : '?') + 'token=' + encodeURIComponent(t) : path;
+    const tk = getToken();
+    const finalPath = tk ? path + (path.indexOf('?') >= 0 ? '&' : '?') + 'token=' + encodeURIComponent(tk) : path;
     return fetch(finalPath, opts).then((res) => {
       if (res.status === 401) {
-        const input = prompt('该服务已启用访问鉴权。请输入访问令牌：');
+        const input = prompt(t('authPrompt'));
         if (input && input.trim()) {
           try { localStorage.setItem('mm_token', input.trim()); } catch (e) {}
           return apiFetch(path, opts); // 重新读取 localStorage 注入
@@ -582,12 +716,12 @@
   els.probeBtn.addEventListener('click', () => {
     if (els.probeBtn.disabled) return;
     els.probeBtn.disabled = true;
-    els.probeBtn.textContent = '探测中…';
+    els.probeBtn.textContent = t('probing');
     awaitingProbe = true;
     apiFetch('/api/probe', { method: 'POST' }).catch(() => {});
     // 兜底：若 10 秒内没有新的 SSE 推送，也恢复按钮
     setTimeout(() => {
-      if (awaitingProbe) { awaitingProbe = false; els.probeBtn.disabled = false; els.probeBtn.textContent = '⟳ 立即探测'; }
+      if (awaitingProbe) { awaitingProbe = false; els.probeBtn.disabled = false; els.probeBtn.textContent = t('probeNow'); }
     }, 10000);
   });
 
@@ -607,23 +741,23 @@
         if (h.length > 6000) h.shift();
       }
     });
-    els.updated.textContent = '更新 ' + fmtTime(ts);
+    els.updated.textContent = t('updated') + ' ' + fmtTime(ts);
     renderCards(); drawChart();
   }
 
   // ---- 数据接入：SSE 优先，失败回退轮询 ----
   function connectSSE() {
     const es = new EventSource('/api/stream' + authQuery());
-    es.onopen = () => setConnect(true, '实时连接');
+    es.onopen = () => setConnect(true, t('live'));
     es.onmessage = (ev) => {
       try {
         const d = JSON.parse(ev.data);
         if (d.config) applyMode(d.config);
         if (d.models) ingest(d.models, d.ts);
-        if (awaitingProbe) { awaitingProbe = false; els.probeBtn.disabled = false; els.probeBtn.textContent = '⟳ 立即探测'; }
+        if (awaitingProbe) { awaitingProbe = false; els.probeBtn.disabled = false; els.probeBtn.textContent = t('probeNow'); }
       } catch (e) {}
     };
-    es.onerror = () => { setConnect(false, 'SSE 断开，转轮询'); es.close(); connectPoll(); };
+    es.onerror = () => { setConnect(false, t('pollFallback')); es.close(); connectPoll(); };
   }
   async function connectPoll() {
     try {
@@ -643,6 +777,15 @@
     } catch (e) {}
     setTimeout(connectPoll, 3000);
   }
+
+  // 语言切换
+  document.getElementById('langToggle').addEventListener('click', () => {
+    curLang = curLang === 'zh' ? 'en' : 'zh';
+    try { localStorage.setItem('mm_lang', curLang); } catch (e) {}
+    applyI18n();
+  });
+  // 初始化语言（按钮文字、默认值等）
+  applyI18n();
 
   apiFetch('/api/status').then(r => r.json()).then(d => {
     (d.models || []).forEach(m => {
