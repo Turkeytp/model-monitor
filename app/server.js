@@ -17,6 +17,10 @@ const https = require('https');
 const fs = require('fs');
 const path = require('path');
 
+// 5.1 增强：进程级异常兜底，避免未知异常导致 Node 直接退出（配合 --restart 可自愈）。
+process.on('uncaughtException', (e) => console.error('[uncaughtException]', e));
+process.on('unhandledRejection', (e) => console.error('[unhandledRejection]', e));
+
 const ROOT = __dirname;
 const PUBLIC = path.join(ROOT, 'public');
 
@@ -30,15 +34,27 @@ function ensureData() {
 }
 function appendCsv(rows) {
   if (!rows.length) return;
+  // 6.1：CSV 注入防护。含逗号/引号/换行的字段用双引号包裹并转义内部引号；
+  // 以 = + - @ 开头的文本前置单引号，阻止 Excel/WPS 当作公式执行（DDE）。
+  const csvCell = (v) => {
+    if (v == null) return '';
+    let s = String(v);
+    s = s.replace(/[\n\r]/g, ' ');
+    let needsQuote = /[",]/.test(s);
+    let out = s;
+    if (/^[=+\-@]/.test(s)) out = "'" + s; // 前导单引号强制文本
+    if (needsQuote) out = '"' + s.replace(/"/g, '""') + '"';
+    return out;
+  };
   const lines = rows.map((r) => [
-    r.ts, r.model, r.score, r.level,
+    r.ts, csvCell(r.model), r.score, r.level,
     r.ttftMs == null ? '' : r.ttftMs,
     r.totalMs == null ? '' : r.totalMs,
     r.tps == null ? '' : r.tps,
     r.available ? 1 : 0,
     r.status == null ? '' : r.status,
-    (r.error || '').replace(/[\n,]/g, ' '),
-    r.source || 'active',
+    csvCell(r.error || ''),
+    csvCell(r.source || 'active'),
   ].join(',')).join('\n');
   fs.appendFileSync(CSV_PATH, lines + '\n');
 }
@@ -203,10 +219,8 @@ const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '')
 function cors(req, res) {
   const origin = req.headers['origin'] || '';
   if (!ALLOWED_ORIGINS.length) {
-    // 未配置白名单：只允许同源（浏览器 fetch 同域正常，跨域被阻）
-    res.setHeader('Access-Control-Allow-Origin', origin || 'null');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Access-Token');
+    // 未配置白名单：不设置任何 Access-Control-Allow-Origin 头。
+    // 同源访问不受影响；跨域响应将不可读，杜绝任意网页窃取 /api/* 数据。
     res.setHeader('Vary', 'Origin');
     return;
   }
@@ -217,6 +231,53 @@ function cors(req, res) {
     res.setHeader('Access-Control-Allow-Credentials', 'true');
   }
   res.setHeader('Vary', 'Origin');
+}
+
+// ---------------------------------------------------------------------------
+// SSRF 防护：拒绝指向内网 / 环回 / 链路本地 / 云元数据 / 保留网段的模型端点。
+// 先查字面量，再 DNS 解析后复查，防止域名解析到内网 IP。
+// 默认仅允许 https 端点（避免 API Key 经明文 http 被截获），可用 ALLOW_HTTP_ENDPOINTS=1 放宽。
+// ---------------------------------------------------------------------------
+const dns = require('dns').promises;
+const ALLOW_HTTP_ENDPOINTS = (process.env.ALLOW_HTTP_ENDPOINTS === '1' || process.env.ALLOW_HTTP_ENDPOINTS === 'true');
+function isPrivateIPv4(ip) {
+  // 0.0.0.0/8, 10/8, 127/8, 169.254/16, 172.16/12, 192.168/16
+  return /^(0|127)\./.test(ip) ||
+    /^10\./.test(ip) ||
+    /^169\.254\./.test(ip) ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(ip) ||
+    /^192\.168\./.test(ip) ||
+    ip === '0.0.0.0';
+}
+function isPrivateIPv6(ip) {
+  const s = ip.toLowerCase();
+  return s === '::1' || s === '::' || s.startsWith('fc') || s.startsWith('fd') || s.startsWith('fe8');
+}
+async function isBlockedUrl(rawUrl) {
+  let u;
+  try { u = new URL(rawUrl); } catch (e) { return true; }
+  // 仅允许 http(s) 协议；javascript:/data:/file: 等一律拒绝
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return true;
+  // 明文 http 端点默认拒绝（除非显式放宽），避免 API Key 经明文被截获
+  if (u.protocol === 'http:' && !ALLOW_HTTP_ENDPOINTS) return true;
+  const host = u.hostname;
+  // 字面量主机名拦截
+  if (/^localhost$/i.test(host)) return true;
+  const literal = host.replace(/^\[|\]$/g, '');
+  if (literal.includes(':')) {
+    if (isPrivateIPv6(literal)) return true;
+  } else {
+    if (isPrivateIPv4(literal)) return true;
+  }
+  // 纯 IP 字面量：到此已判完
+  if (/^\d+$|^(\d{1,3}\.){3}\d{1,3}$/.test(literal)) return false;
+  // 域名：解析后复查是否指向内网
+  try {
+    const addrs = await dns.lookup(host, { all: true });
+    return addrs.some((a) => isPrivateIPv4(a.address) || isPrivateIPv6(a.address));
+  } catch (e) {
+    return true; // 解析失败一律拒绝
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -248,8 +309,14 @@ const RATE_LIMIT_WINDOW_MS = 10000;
 const RATE_LIMIT_MAX = 5;
 const rateHits = new Map(); // ip -> { count, resetAt }
 function clientIp(req) {
-  return (req.headers['x-forwarded-for'] || '').split(',')[0].trim() ||
-    req.socket.remoteAddress || 'unknown';
+  const real = (req.socket.remoteAddress || 'unknown').replace(/^::ffff:/, '');
+  // 仅在显式声明可信反向代理时才解析 XFF；否则一律用 socket 真实地址，
+  // 防止客户端伪造 x-forwarded-for 绕过限流。
+  if (process.env.TRUST_PROXY === '1') {
+    const xff = (req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+    if (xff && xff !== 'unknown') return xff;
+  }
+  return real;
 }
 function rateLimited(req) {
   const ip = clientIp(req);
@@ -613,12 +680,18 @@ const server = http.createServer((req, res) => {
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
       res.end(JSON.stringify(config.models.map(withStatus)));
     } else if (req.method === 'POST') {
-      readBody(req).then((body) => {
+      readBody(req).then(async (body) => {
         let data;
         try { data = JSON.parse(body); } catch (e) { res.writeHead(400); res.end('请求体不是合法 JSON'); return; }
         const id = (data.id || '').trim();
         if (!id) { res.writeHead(400); res.end('缺少 id（模型标识）'); return; }
         if (!/^https?:\/\//.test(data.url || '')) { res.writeHead(400); res.end('url 必须为 http(s) 开头的有效地址'); return; }
+        // SSRF 防护：拒绝内网/保留地址及（默认）明文 http 端点
+        if (await isBlockedUrl(data.url)) {
+          res.writeHead(400);
+          res.end(JSON.stringify({ ok: false, error: 'url 不允许指向内网/保留地址' + (ALLOW_HTTP_ENDPOINTS ? '' : '，且默认需为 https') }));
+          return;
+        }
         if (config.models.some((m) => m.id === id)) { res.writeHead(409); res.end('该 id 已存在'); return; }
         const model = normalizeModel(data);
         config.models.push(model);
@@ -633,14 +706,25 @@ const server = http.createServer((req, res) => {
     }
   } else if (p.startsWith('/api/models/')) {
     if (!requireAuth(req, res, u)) return;
-    const id = decodeURIComponent(p.slice('/api/models/'.length));
+    let id;
+    try { id = decodeURIComponent(p.slice('/api/models/'.length)); }
+    catch (e) { res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify({ ok: false, error: '非法的模型 id 编码' })); return; }
     if (req.method === 'PUT') {
-      readBody(req).then((body) => {
+      readBody(req).then(async (body) => {
         let data;
         try { data = JSON.parse(body); } catch (e) { res.writeHead(400); res.end('请求体不是合法 JSON'); return; }
         const idx = config.models.findIndex((m) => m.id === id);
         if (idx < 0) { res.writeHead(404); res.end('模型不存在'); return; }
-        config.models[idx] = normalizeModel(Object.assign({}, config.models[idx], data, { id }));
+        const merged = Object.assign({}, config.models[idx], data, { id });
+        // SSRF 防护：URL 改动时校验
+        if (data.url && data.url !== config.models[idx].url) {
+          if (await isBlockedUrl(data.url)) {
+            res.writeHead(400);
+            res.end(JSON.stringify({ ok: false, error: 'url 不允许指向内网/保留地址' + (ALLOW_HTTP_ENDPOINTS ? '' : '，且默认需为 https') }));
+            return;
+          }
+        }
+        config.models[idx] = normalizeModel(merged);
         config.models[idx].apiKey = mergeModelKey(config.models[idx], config.models[idx]); // 请求未带有效 Key 则保留旧 Key
         saveConfig();
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -686,14 +770,21 @@ const server = http.createServer((req, res) => {
         const m = config.models.find((x) => x.id === id);
         if (!m) { res.writeHead(404); res.end('模型不存在'); return; }
         const status = data.status == null ? 200 : Number(data.status);
+        // 6.3：忽略客户端 ts（防写未来/过去时间戳污染曲线）；对指标设合理上下限。
+        const clampMs = (v) => {
+          if (v == null) return null;
+          const n = Number(v);
+          if (!isFinite(n)) return null;
+          return Math.max(0, Math.min(n, 600000)); // 0~600s
+        };
         const probe = {
-          ts: data.ts || Date.now(),
+          ts: Date.now(),
           ok: data.available === false ? false : (status < 400),
           status,
-          ttftMs: data.ttftMs == null ? null : Number(data.ttftMs),
-          totalMs: data.totalMs == null ? null : Number(data.totalMs),
+          ttftMs: clampMs(data.ttftMs),
+          totalMs: clampMs(data.totalMs),
           tokensPerSec: null,
-          error: data.error || null,
+          error: data.error ? String(data.error).slice(0, 500) : null,
           retryAfter: null,
           rateLimitRemaining: data.rateLimitRemaining == null ? null : Number(data.rateLimitRemaining),
           rateLimitLimit: data.rateLimitLimit == null ? null : Number(data.rateLimitLimit),
