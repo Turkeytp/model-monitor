@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>模型设置 · 繁忙度监控</title>
+<style>
+  :root {
+    --bg: #f5f7fa; --card: #ffffff; --ink: #1f2937; --muted: #6b7280;
+    --line: #e5e7eb; --accent: #0ea5e9; --danger: #ef4444; --idle: #16a34a;
+    --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.04);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--ink); -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 22px 20px 48px; }
+  header.top { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 18px; }
+  .title h1 { font-size: 21px; margin: 0; font-weight: 700; }
+  .title p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+  .links a { color: var(--accent); text-decoration: none; border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; font-size: 13px; background: #fff; }
+  .links a:hover { background: #f0f9ff; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); padding: 18px; margin-bottom: 18px; }
+  .card h2 { font-size: 15px; margin: 0 0 14px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; }
+  td.id { font-weight: 700; word-break: break-all; }
+  td.url { color: var(--muted); word-break: break-all; font-size: 12px; }
+  .pill { font-size: 11px; padding: 1px 8px; border-radius: 999px; background: #f1f5f9; color: var(--muted); }
+  .pdot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: none; }
+  .pname { display: inline-flex; align-items: center; gap: 6px; }
+  .pill.ok { background: #dcfce7; color: #166534; }
+  .pill.bad { background: #fee2e2; color: #991b1b; }
+  .caps span { font-size: 11px; color: var(--muted); margin-right: 6px; }
+  .row-actions button { font-size: 12px; border: 1px solid var(--line); background: #fff; border-radius: 7px; padding: 4px 10px; cursor: pointer; margin-right: 6px; }
+  .row-actions button:hover { background: #f0f9ff; }
+  .row-actions button.del { color: var(--danger); border-color: #fecaca; }
+  .row-actions button.del:hover { background: #fef2f2; }
+
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; }
+  .field { display: flex; flex-direction: column; gap: 5px; }
+  .field.full { grid-column: 1 / -1; }
+  .field label { font-size: 12px; color: var(--muted); }
+  .field input[type=text], .field input[type=password] { font-size: 13px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: #fff; color: var(--ink); }
+  .field input:focus { outline: none; border-color: var(--accent); }
+  .checks { display: flex; gap: 16px; flex-wrap: wrap; }
+  .checks label { font-size: 13px; display: inline-flex; align-items: center; gap: 6px; color: var(--ink); }
+  .form-actions { display: flex; gap: 10px; margin-top: 14px; align-items: center; }
+  .btn { font-size: 13px; font-weight: 600; border: none; border-radius: 9px; padding: 9px 18px; cursor: pointer; }
+  .btn.primary { background: var(--accent); color: #fff; }
+  .btn.primary:hover { background: #0284c7; }
+  .btn.ghost { background: #fff; color: var(--ink); border: 1px solid var(--line); }
+  .btn.ghost:hover { background: #f1f5f9; }
+  .btn.warn { background: var(--idle); color: #fff; }
+  .form-title { font-size: 14px; font-weight: 700; margin: 0 0 12px; }
+  .msg { font-size: 13px; margin-left: 8px; }
+  .msg.ok { color: var(--idle); }
+  .msg.err { color: var(--danger); }
+  .empty { color: var(--muted); font-size: 13px; padding: 12px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="title">
+      <h1>模型设置</h1>
+      <p>增删改被监控的模型；改动即时写入 config.json 并立即探测验证</p>
+    </div>
+    <div class="links">
+      <a href="/">← 返回仪表盘</a>
+      <button class="btn warn" id="probeBtn" style="margin-left:8px;">立即探测一次</button>
+    </div>
+  </header>
+
+  <div class="card">
+    <h2>当前监控的模型</h2>
+    <div id="list"><div class="empty">加载中…</div></div>
+  </div>
+
+  <div class="card">
+    <p class="form-title" id="formTitle">新增模型</p>
+    <form id="modelForm">
+      <input type="hidden" id="f_edit" value="" />
+      <div class="form-grid">
+        <div class="field">
+          <label>模型标识 id（必填，唯一）</label>
+          <input type="text" id="f_id" placeholder="如 DeepSeek-V4-Flash" autocomplete="off" />
+        </div>
+        <div class="field">
+          <label>显示名称 name</label>
+          <input type="text" id="f_name" placeholder="如 AMD" autocomplete="off" />
+        </div>
+        <div class="field">
+          <label>厂商 vendor</label>
+          <input type="text" id="f_vendor" placeholder="Custom" autocomplete="off" />
+        </div>
+        <div class="field">
+          <label>接口地址 url（必填，http(s)）</label>
+          <input type="text" id="f_url" placeholder="https://.../v1" autocomplete="off" />
+        </div>
+        <div class="field full">
+          <label>API Key（留空表示无鉴权）</label>
+          <input type="password" id="f_key" placeholder="sk-... / rc-..." autocomplete="new-password" />
+        </div>
+        <div class="field full">
+          <label>能力（仅记录，不影响探测）</label>
+          <div class="checks">
+            <label><input type="checkbox" id="f_tool" /> 工具调用</label>
+            <label><input type="checkbox" id="f_img" /> 图像</label>
+            <label><input type="checkbox" id="f_reason" /> 推理</label>
+            <label><input type="checkbox" id="f_proto" /> 自定义协议</label>
+          </div>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn primary" id="saveBtn">保存</button>
+        <button type="button" class="btn ghost" id="resetBtn">清空</button>
+        <span class="msg" id="formMsg"></span>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  function esc(s) { return (s || '').replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c])); }
+  function maskKey(k) { if (!k) return '<span style="color:var(--muted)">无</span>'; return '••••' + k.slice(-4); }
+
+  // ---- 鉴权：从 URL ?token= 或 localStorage 读取访问令牌 ----
+  function getToken() {
+    try {
+      const p = new URLSearchParams(location.search).get('token');
+      if (p) return p;
+      return localStorage.getItem('mm_token') || '';
+    } catch (e) { return ''; }
+  }
+  function apiFetch(path, opts) {
+    const t = getToken();
+    const finalPath = t ? path + (path.indexOf('?') >= 0 ? '&' : '?') + 'token=' + encodeURIComponent(t) : path;
+    return fetch(finalPath, opts).then((res) => {
+      if (res.status === 401) {
+        const input = prompt('该服务已启用访问鉴权。请输入访问令牌：');
+        if (input && input.trim()) {
+          try { localStorage.setItem('mm_token', input.trim()); } catch (e) {}
+          return apiFetch(path, opts);
+        }
+      }
+      return res;
+    });
+  }
+
+  // ---- 与服务端/仪表盘一致的提供商识别与配色 ----
+  const PALETTE = ['#2563eb','#7c3aed','#db2777','#ea580c','#16a34a','#0891b2','#dc2626','#4f46e5','#ca8a04','#0d9488','#9333ea','#65a30d'];
+  const providerColor = {};
+  function providerOf(m) {
+    if (!m) return '未知';
+    const v = String(m.vendor == null ? '' : m.vendor).trim();
+    if (v && !/^(custom|自定义|其他|other)$/i.test(v)) return v;
+    const n = String(m.name == null ? '' : m.name).trim();
+    return n || '未知';
+  }
+  function modelLabel(m) {
+    if (!m) return '';
+    const p = providerOf(m);
+    const n = String(m.name == null ? '' : m.name).trim();
+    return (n && n !== p) ? n : String(m.id || '');
+  }
+  function colorFor(p) {
+    if (!providerColor[p]) providerColor[p] = PALETTE[Object.keys(providerColor).length % PALETTE.length];
+    return providerColor[p];
+  }
+  // 排序键：拉丁名在前、中文名在后；同组按名称自然序
+  function provKey(p) {
+    const t = String(p == null ? '' : p);
+    return (t.charCodeAt(0) < 128 ? '0' : '1') + t.toLowerCase();
+  }
+
+  async function loadList() {
+    try {
+      const r = await apiFetch('/api/models');
+      const models = await r.json();
+      const box = $('list');
+      if (!models.length) { box.innerHTML = '<div class="empty">暂无模型，请在下方新增。</div>'; return; }
+      // 排序：先按提供商，再按模型名称
+      models.sort((a, b) => {
+        const c = provKey(providerOf(a)).localeCompare(provKey(providerOf(b)), 'en', { numeric: true });
+        if (c !== 0) return c;
+        return modelLabel(a).localeCompare(modelLabel(b), 'en', { numeric: true, sensitivity: 'base' });
+      });
+      models.forEach(m => colorFor(providerOf(m)));
+      box.innerHTML = '<table><thead><tr><th>模型名称</th><th>提供商</th><th>接口地址</th><th>Key</th><th>能力</th><th>最近状态</th><th>操作</th></tr></thead><tbody>' +
+        models.map(m => {
+          const st = m.last;
+          const stHtml = st ? ('<span class="pill ' + (st.level === '不可达' ? 'bad' : 'ok') + '">' + st.level + ' ' + st.score + '</span>') : '<span class="pill">未探测</span>';
+          const caps = ['tool','img','reason','proto'].filter(c => m['supports' + c[0].toUpperCase() + c.slice(1)] || (c==='proto'&&m.useCustomProtocol)).map(c => ({tool:'工具',img:'图像',reason:'推理',proto:'协议'}[c])).join('/');
+          const prov = providerOf(m);
+          return '<tr>' +
+            '<td class="id">' + esc(modelLabel(m) || m.id) + (modelLabel(m) !== m.id ? '<div style="font-weight:400;font-size:11px;color:var(--muted)">' + esc(m.id) + '</div>' : '') + '</td>' +
+            '<td><span class="pname"><i class="pdot" style="background:' + colorFor(prov) + '"></i>' + esc(prov) + '</span></td>' +
+            '<td class="url">' + esc(m.url || '') + '</td>' +
+            '<td>' + (m.apiKeyMasked || maskKey(m.apiKey)) + '</td>' +
+            '<td class="caps">' + (caps ? '<span>' + caps + '</span>' : '<span style="color:var(--muted)">—</span>') + '</td>' +
+            '<td>' + stHtml + '</td>' +
+            '<td class="row-actions"><button data-edit="' + esc(m.id) + '">编辑</button><button class="del" data-del="' + esc(m.id) + '">删除</button></td>' +
+          '</tr>';
+        }).join('') + '</tbody></table>';
+      box.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => editModel(b.getAttribute('data-edit'))));
+      box.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => delModel(b.getAttribute('data-del'))));
+    } catch (e) {
+      $('list').innerHTML = '<div class="empty">加载失败：' + esc(e.message) + '</div>';
+    }
+  }
+
+  function resetForm() {
+    $('f_edit').value = '';
+    $('f_id').value = ''; $('f_id').disabled = false;
+    $('f_name').value = ''; $('f_vendor').value = 'Custom'; $('f_url').value = '';
+    $('f_key').value = ''; $('f_tool').checked = false; $('f_img').checked = false; $('f_reason').checked = false; $('f_proto').checked = false;
+    $('formTitle').textContent = '新增模型';
+    $('formMsg').textContent = ''; $('formMsg').className = 'msg';
+  }
+
+  async function editModel(id) {
+    try {
+      const models = await (await apiFetch('/api/models')).json();
+      const m = models.find(x => x.id === id);
+      if (!m) return;
+      $('f_edit').value = m.id;
+      $('f_id').value = m.id; $('f_id').disabled = true; // id 不可改
+      $('f_name').value = m.name || ''; $('f_vendor').value = m.vendor || 'Custom'; $('f_url').value = m.url || '';
+      // 明文 Key 永不返回，这里只能拿到掩码；留空代表"保持原 Key"，由后端合并
+      $('f_key').placeholder = m.hasApiKey ? '保持原 Key（如需更换请粘贴完整新 Key）' : 'sk-... / rc-...';
+      $('f_key').value = '';
+      $('f_tool').checked = !!m.supportsToolCall; $('f_img').checked = !!m.supportsImages;
+      $('f_reason').checked = !!m.supportsReasoning; $('f_proto').checked = !!m.useCustomProtocol;
+      $('formTitle').textContent = '编辑模型：' + m.id;
+      $('formMsg').textContent = ''; $('formMsg').className = 'msg';
+      window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+    } catch (e) {}
+  }
+
+  async function delModel(id) {
+    if (!confirm('确认删除模型「' + id + '」？\n该操作会从 config.json 移除它（历史 CSV 仍保留）。')) return;
+    try {
+      const r = await apiFetch('/api/models/' + encodeURIComponent(id), { method: 'DELETE' });
+      const j = await r.json();
+      if (!r.ok) { alert('删除失败：' + (j.error || r.status)); return; }
+      await loadList();
+    } catch (e) { alert('删除失败：' + e.message); }
+  }
+
+  $('modelForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const editId = $('f_edit').value;
+    const payload = {
+      id: $('f_id').value.trim(),
+      name: $('f_name').value.trim(),
+      vendor: $('f_vendor').value.trim() || 'Custom',
+      url: $('f_url').value.trim(),
+      apiKey: $('f_key').value.trim(),
+      supportsToolCall: $('f_tool').checked,
+      supportsImages: $('f_img').checked,
+      supportsReasoning: $('f_reason').checked,
+      useCustomProtocol: $('f_proto').checked,
+    };
+    if (!payload.id) { showMsg('请填写模型标识 id', false); return; }
+    if (!/^https?:\/\//.test(payload.url)) { showMsg('url 必须以 http(s):// 开头', false); return; }
+    try {
+      const url = editId ? ('/api/models/' + encodeURIComponent(editId)) : '/api/models';
+      const method = editId ? 'PUT' : 'POST';
+      const r = await apiFetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      const j = await r.json();
+      if (!r.ok) { showMsg('保存失败：' + (j.error || r.status), false); return; }
+      showMsg(editId ? '已更新' : '已新增，正在探测…', true);
+      resetForm();
+      await loadList();
+    } catch (e) { showMsg('保存失败：' + e.message, false); }
+  });
+
+  function showMsg(t, ok) { $('formMsg').textContent = t; $('formMsg').className = 'msg ' + (ok ? 'ok' : 'err'); }
+
+  $('resetBtn').addEventListener('click', resetForm);
+  $('probeBtn').addEventListener('click', async () => {
+    $('probeBtn').disabled = true; $('probeBtn').textContent = '探测中…';
+    try { await apiFetch('/api/probe', { method: 'POST' }); } catch (e) {}
+    // 等待探测完成再刷新状态
+    setTimeout(async () => { await loadList(); $('probeBtn').disabled = false; $('probeBtn').textContent = '立即探测一次'; }, 8000);
+  });
+
+  resetForm();
+  loadList();
+</script>
+</body>
+</html>
