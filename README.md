@@ -62,6 +62,21 @@ docker run -d -p 8080:8080 \
 
 浏览器打开 `http://<主机>:8080/` 即可看到仪表盘；设置页在 `http://<主机>:8080/settings`。
 
+### 3.5 或：docker-compose 一键部署
+
+仓库已附 `docker-compose.yml`（构建、端口映射、持久化 `data/`、挂载 `config.json`、自动重启）。
+
+```bash
+# 1. 仓库根目录准备你的 config.json(结构见下节)
+# 2. 构建并启动
+docker compose up -d --build
+# 3. 查看日志 / 停止
+docker compose logs -f
+docker compose down
+```
+
+在 compose 文件中取消 `ACCESS_TOKEN` / `ALLOWED_ORIGINS` 的注释即可启用鉴权与 CORS 白名单。
+
 ### 4. 配置要监控的模型
 
 两种方式（二选一）：
