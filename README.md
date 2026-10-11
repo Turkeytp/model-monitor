@@ -2,6 +2,12 @@
 
 自定义模型繁忙度监控 —— 零依赖 Node 后端 + 纯 HTML/JS 前端仪表盘。
 
+## 预览
+
+仪表盘实时显示各模型的首包延迟 / 总延迟 / 繁忙度评分，并绘制 7 天繁忙度趋势曲线（见 `docs/screenshot.png`）：
+
+![仪表盘截图](docs/screenshot.png)
+
 ## 功能
 
 - **主动探测**：定时（15~20 分钟随机抖动）对每个模型发流式 chat 补全，测量首包延迟（TTFT）/ 总延迟 / 可用性，并读取响应头限流信号（`x-ratelimit-remaining`、`retry-after`、HTTP 429/503）。
