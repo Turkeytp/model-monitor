@@ -16,6 +16,15 @@ const http = require('http');
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
+
+// 常量时间比较，避免 token 比较的时序侧信道（长度不等直接 false，再 timingSafeEqual）
+function safeEqual(a, b) {
+  const ba = Buffer.from(String(a));
+  const bb = Buffer.from(String(b));
+  if (ba.length !== bb.length) return false;
+  return crypto.timingSafeEqual(ba, bb);
+}
 
 // 5.1 增强：进程级异常兜底，避免未知异常导致 Node 直接退出（配合 --restart 可自愈）。
 process.on('uncaughtException', (e) => console.error('[uncaughtException]', e));
@@ -58,6 +67,29 @@ function appendCsv(rows) {
   ].join(',')).join('\n');
   fs.appendFileSync(CSV_PATH, lines + '\n');
 }
+// 6.1 配套：引号感知的 CSV 行解析，与 csvCell 转义配套。
+// 处理带双引号包裹的字段（内部 "" 为转义引号、逗号不切分），返回去除首尾引号的字段数组。
+function parseCsvLine(line) {
+  const out = [];
+  let cur = '';
+  let inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQ) {
+      if (ch === '"') {
+        if (line[i + 1] === '"') { cur += '"'; i++; }
+        else inQ = false;
+      } else cur += ch;
+    } else {
+      if (ch === '"') inQ = true;
+      else if (ch === ',') { out.push(cur); cur = ''; }
+      else cur += ch;
+    }
+  }
+  out.push(cur);
+  // 去掉可能残留的前导单引号（csvCell 对公式前缀加的 ' 标记），恢复原始值
+  return out.map((s) => (s.charAt(0) === "'" && s.length > 1 ? s.slice(1) : s));
+}
 // 启动回填：读取 CSV 并保留近 30 天，超期则顺手裁剪文件
 function loadHistory() {
   if (!fs.existsSync(CSV_PATH)) return;
@@ -71,7 +103,7 @@ function loadHistory() {
   const lastByModel = {};  // model -> {ttftMs, totalMs, tokensPerSec, status, error, available, source}
 
   for (let i = 1; i < lines.length; i++) {
-    const c = lines[i].split(',');
+    const c = parseCsvLine(lines[i]);
     if (c.length < 4) continue;
     const ts = Number(c[0]);
     if (isNaN(ts) || ts < cutoff) continue;
@@ -157,9 +189,13 @@ function saveConfig() {
 function readBody(req) {
   return new Promise((resolve, reject) => {
     let b = '';
-    req.on('data', (c) => { b += c; if (b.length > 1e6) req.destroy(); });
-    req.on('end', () => resolve(b));
-    req.on('error', reject);
+    let settled = false;
+    const settle = (fn, v) => { if (!settled) { settled = true; fn(v); } };
+    req.on('data', (c) => { b += c; if (b.length > 1e6) { req.destroy(); } });
+    req.on('end', () => settle(resolve, b));
+    req.on('error', (e) => settle(reject, e));
+    // 请求被 destroy / 客户端断开时，确保 Promise 不悬挂（防资源滞留）
+    req.on('close', () => { settle(reject, new Error('request closed')); });
   });
 }
 
@@ -251,6 +287,15 @@ function isPrivateIPv4(ip) {
 }
 function isPrivateIPv6(ip) {
   const s = ip.toLowerCase();
+  // 先剥离 IPv4-mapped 前缀（::ffff:127.0.0.1 与 ::ffff:7f00:1 两种写法）
+  // 操作系统会把 mapped 形式等价转换为对私网 IPv4 的连接，必须拦下
+  const mappedDec = s.match(/^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/);
+  if (mappedDec) return isPrivateIPv4(mappedDec[1]);
+  const mappedHex = s.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
+  if (mappedHex) {
+    const hi = parseInt(mappedHex[1], 16), lo = parseInt(mappedHex[2], 16);
+    return isPrivateIPv4(`${hi >> 8}.${hi & 255}.${lo >> 8}.${lo & 255}`);
+  }
   return s === '::1' || s === '::' || s.startsWith('fc') || s.startsWith('fd') || s.startsWith('fe8');
 }
 async function isBlockedUrl(rawUrl) {
@@ -293,7 +338,7 @@ function isAuthed(req, u) {
   const auth = (req.headers['authorization'] || '').toString();
   if (!a && /^bearer\s+/i.test(auth)) a = auth.replace(/^bearer\s+/i, '');
   if (u && u.searchParams.get('token')) a = u.searchParams.get('token');
-  return a === ACCESS_TOKEN;
+  return safeEqual(a, ACCESS_TOKEN);
 }
 function requireAuth(req, res, u) {
   if (isAuthed(req, u)) return true;
@@ -648,7 +693,7 @@ const server = http.createServer((req, res) => {
       if (model) {
         const lines = text.split('\n');
         text = [lines[0], ...lines.slice(1).filter((l) => {
-          const c = l.split(',');
+          const c = parseCsvLine(l);
           return c[1] === model;
         })].join('\n');
       }
