@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="0" />
+<title>自定义模型繁忙度监控</title>
+<style>
+  :root {
+    --bg: #f5f7fa;
+    --card: #ffffff;
+    --ink: #1f2937;
+    --muted: #6b7280;
+    --line: #e5e7eb;
+    --idle: #16a34a;
+    --normal: #0ea5e9;
+    --busy: #f59e0b;
+    --heavy: #ef4444;
+    --inreachable: #7f1d1d;
+    --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.04);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg); color: var(--ink); -webkit-font-smoothing: antialiased;
+  }
+  .wrap { margin: 0 auto; padding: 22px 20px 48px; }
+  header.top { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
+  .title h1 { font-size: 22px; margin: 0; font-weight: 700; }
+  .title p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+  .meta { display: flex; align-items: center; gap: 12px; font-size: 13px; color: var(--muted); flex-wrap: wrap; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); display: inline-block; margin-right: 6px; }
+  .dot.live { background: var(--idle); box-shadow: 0 0 0 4px rgba(22,163,74,.15); animation: pulse 1.6s infinite; }
+  .dot.down { background: var(--heavy); }
+  @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(22,163,74,.3)} 70%{box-shadow:0 0 0 6px rgba(22,163,74,0)} 100%{box-shadow:0 0 0 0 rgba(22,163,74,0)} }
+  .badge { padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .badge.sim { background: #fef3c7; color: #92400e; }
+  .badge.real { background: #dcfce7; color: #166534; }
+
+  .summary { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+  .sum { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 16px; box-shadow: var(--shadow); min-width: 92px; text-align: center; cursor: pointer; transition: all .15s; }
+  .sum:hover { box-shadow: 0 3px 12px rgba(15,23,42,.12); }
+  .sum.on { ring: 2px solid currentColor; box-shadow: 0 0 0 3px rgba(14,165,233,.2); }
+  .sum .n { font-size: 22px; font-weight: 800; }
+  .sum .k { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+  .prov-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; align-items: center; }
+  .prov-btn { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 16px; box-shadow: var(--shadow); min-width: 92px; text-align: center; cursor: pointer; transition: all .15s; }
+  .prov-btn:hover { box-shadow: 0 3px 12px rgba(15,23,42,.12); }
+  .prov-btn.on { border-color: #7c3aed; box-shadow: 0 0 0 3px rgba(124,58,237,.2); }
+  .prov-btn.dim { opacity: 0.4; }
+  .prov-btn .pv-n { font-size: 22px; font-weight: 800; display: block; }
+  .prov-btn .pv-k { font-size: 12px; color: var(--muted); margin-top: 2px; display: block; }
+  .prov-btn .pv-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 4px; vertical-align: middle; }
+  .prov-sep { width: 1px; height: 48px; background: var(--line); margin: 0 6px; flex-shrink: 0; }
+
+  /* 卡片网格 */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
+  .mcard { background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); padding: 16px; cursor: pointer; transition: box-shadow .2s; }
+  .mcard:hover { box-shadow: 0 3px 12px rgba(15,23,42,.10); }
+  .mcard.sel { box-shadow: 0 0 0 2px rgba(14,165,233,.35); }
+  .mhead { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .mname { font-weight: 700; font-size: 14px; word-break: break-all; }
+  .mchip { font-size: 11px; color: #fff; padding: 1px 8px; border-radius: 999px; flex: none; font-weight: 600; }
+  .mid { font-size: 11px; color: var(--muted); margin: 4px 0 10px; word-break: break-all; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .pdot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: none; }
+  .mrow { display: flex; align-items: center; gap: 14px; }
+  .mgauge { position: relative; width: 92px; height: 92px; flex: none; }
+  .mgauge .num { position: absolute; left: 0; right: 0; top: 30px; text-align: center; font-size: 26px; font-weight: 800; line-height: 1; }
+  .mgauge .lvl { position: absolute; left: 0; right: 0; top: 60px; text-align: center; font-size: 12px; font-weight: 700; }
+  .mstats { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; font-size: 12px; }
+  .mstats .st { color: var(--muted); }
+  .mstats .st b { color: var(--ink); font-weight: 700; font-size: 14px; margin-left: 2px; }
+  .mstats .st.warn b { color: var(--heavy); }
+  .merr { margin-top: 8px; font-size: 11px; color: var(--heavy); }
+  .mtag { font-size: 10px; padding: 1px 7px; border-radius: 999px; font-weight: 600; flex: none; vertical-align: middle; }
+  .mtag.src-active { background: #e0f2fe; color: #0369a1; }
+  .mtag.src-passive { background: #dcfce7; color: #166534; }
+  .mtag.src-mix { background: #fef3c7; color: #92400e; }
+  .minfo { margin-top: 8px; font-size: 11px; color: var(--muted); }
+  .minfo.warn { color: var(--heavy); }
+
+  /* 趋势图 */
+  .chart-card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); padding: 18px; margin-top: 18px; }
+  .chart-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px; gap: 10px; flex-wrap: wrap; }
+  .chart-head h2 { font-size: 15px; margin: 0; }
+  .ctrl { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  /* 自定义下拉（原生 select 在部分内嵌 WebView 里弹不出，故自绘） */
+  .dd { position: relative; display: inline-block; }
+  .dd-btn { font-size: 13px; padding: 5px 10px; border-radius: 8px; border: 1px solid var(--line); background: #fff; color: var(--ink); font-family: inherit; cursor: pointer; min-width: 210px; display: inline-flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .dd-btn:hover { border-color: #cbd5e1; }
+  .dd-btn .lbl { display: inline-flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dd-btn .caret { color: var(--muted); font-size: 9px; flex: none; }
+  .dd-panel { position: absolute; z-index: 80; top: calc(100% + 4px); left: 0; min-width: 100%; width: max-content; max-width: 400px; background: #fff; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 10px 28px rgba(15,23,42,.16); padding: 6px; display: none; }
+  .dd-panel.open { display: block; }
+  .dd-panel .filt { width: 100%; font-size: 12px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 7px; margin-bottom: 6px; font-family: inherit; color: var(--ink); }
+  .dd-panel .filt:focus { outline: none; border-color: #0ea5e9; }
+  .dd-list { max-height: 300px; overflow-y: auto; }
+  .dd-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 7px; font-size: 13px; cursor: pointer; }
+  .dd-item:hover { background: #f1f5f9; }
+  .dd-item.on { background: #e0f2fe; }
+  .dd-item .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dd-item .p { margin-left: auto; font-size: 11px; color: var(--muted); flex: none; }
+  .dd-empty { padding: 8px; font-size: 12px; color: var(--muted); text-align: center; }
+  .ranges { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .ranges button { border: none; background: #fff; color: var(--muted); font-size: 12px; padding: 4px 9px; cursor: pointer; }
+  .ranges button.on { background: #0ea5e9; color: #fff; }
+  .ranges button:hover:not(.on) { background: #f0f9ff; }
+  .dlbtn { font-size: 12px; color: #0ea5e9; text-decoration: none; border: 1px solid var(--line); border-radius: 8px; padding: 4px 9px; }
+  .dlbtn:hover { background: #f0f9ff; }
+  .btn { font-size: 12px; color: #0ea5e9; background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 4px 10px; cursor: pointer; font-family: inherit; }
+  .btn:hover:not(:disabled) { background: #f0f9ff; }
+  .btn:disabled { color: var(--muted); background: #f3f4f6; cursor: default; }
+  .chart-head .hint { font-size: 12px; color: var(--muted); }
+  canvas { width: 100%; height: 240px; display: block; }
+
+  .notice { margin-top: 20px; font-size: 13px; color: var(--muted); background: #fffbeb; border: 1px solid #fde68a; border-radius: 12px; padding: 14px 16px; line-height: 1.7; }
+  .notice code { background: #f3f4f6; padding: 1px 6px; border-radius: 5px; font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="title">
+      <h1>自定义模型繁忙度监控</h1>
+      <p>实时探测各模型 API 的首包延迟 / 总延迟 / 可用性，推断繁忙程度</p>
+    </div>
+    <div class="meta">
+      <span><span id="connDot" class="dot"></span><span id="connText">连接中…</span></span>
+      <span id="srcBadge" class="badge sim">模拟</span>
+      <span id="updated">—</span>
+      <button id="probeBtn" class="btn">⟳ 立即探测</button>
+      <a class="dlbtn" href="/settings">⚙ 设置</a>
+    </div>
+  </header>
+
+  <div class="prov-row" id="filterRow"></div>
+
+  <div class="grid" id="grid"></div>
+
+  <div class="chart-card">
+    <div class="chart-head">
+      <h2>繁忙度趋势</h2>
+      <div class="ctrl">
+        <div class="dd" id="dd">
+          <button class="dd-btn" id="ddBtn" type="button">
+            <span class="lbl" id="ddLabel">选择模型</span>
+            <span class="caret">▼</span>
+          </button>
+          <div class="dd-panel" id="ddPanel">
+            <input class="filt" id="ddFilter" placeholder="筛选模型 / 提供商…" autocomplete="off" />
+            <div class="dd-list" id="ddList"></div>
+          </div>
+        </div>
+        <div class="ranges" id="ranges">
+          <button data-ms="1800000">30分</button>
+          <button data-ms="7200000">2时</button>
+          <button data-ms="43200000">12时</button>
+          <button data-ms="86400000">24时</button>
+          <button data-ms="604800000" class="on">7天</button>
+        </div>
+        <a id="dlCsv" class="dlbtn" href="/api/csv" download="history.csv">下载CSV</a>
+        <span class="hint" id="chartHint"></span>
+      </div>
+    </div>
+    <canvas id="chart"></canvas>
+  </div>
+
+  <div class="notice" id="notice">
+    <strong>提示：</strong>当前为<strong>模拟模式</strong>，展示的是演示数据（各模型轨迹不同）。
+    接入真实监控：编辑 <code>config.json</code>，确认已填入你的模型列表，把 <code>simulate</code> 改为 <code>false</code>，然后重启本服务即可开始真实探测。
+  </div>
+</div>
+
+<script>
+  // 版本戳，强制浏览器重新下载本文件
+  window.__MM_VERSION = '20261006-2003';
+  const LEVEL_COLOR = { '空闲':'var(--idle)', '正常':'var(--normal)', '繁忙':'var(--busy)', '拥堵':'var(--heavy)', '不可达':'#7f1d1d' };
+  const LEVEL_COLOR_NAME = { '空闲':'空闲', '正常':'正常', '繁忙':'繁忙', '拥堵':'拥堵', '不可达':'不可达' };
+  const INREACHABLE_COLOR = '#7f1d1d'; // 暗红色用于不可达
+  const RING_R = 38, RING_C = 2 * Math.PI * RING_R, RING_VIS = RING_C * 0.75; // 270°
+  const FULL_C = RING_C;
+
+  const els = {
+    connDot: document.getElementById('connDot'),
+    connText: document.getElementById('connText'),
+    srcBadge: document.getElementById('srcBadge'),
+    updated: document.getElementById('updated'),
+    summary: document.getElementById('summary'),
+    filterRow: document.getElementById('filterRow'),
+    grid: document.getElementById('grid'),
+    dd: document.getElementById('dd'),
+    ddBtn: document.getElementById('ddBtn'),
+    ddLabel: document.getElementById('ddLabel'),
+    ddPanel: document.getElementById('ddPanel'),
+    ddFilter: document.getElementById('ddFilter'),
+    ddList: document.getElementById('ddList'),
+    chartHint: document.getElementById('chartHint'),
+    notice: document.getElementById('notice'),
+    dlCsv: document.getElementById('dlCsv'),
+    probeBtn: document.getElementById('probeBtn'),
+  };
+
+  let order = [];                 // 模型 id 顺序
+  const snaps = {};               // id -> 最新快照
+  const historyMap = {};           // id -> [{ts,score,level}]
+  let selectedId = null;
+  let rangeMs = 0;                 // 趋势图时间范围，0=全部
+  let selectedProv = 'all';        // 当前选中的供应商筛选
+  let awaitingProbe = false;       // 立即探测按钮状态
+  let ddSig = '';                  // 下拉列表重建签名（避免每帧重建）
+
+  // ---- 提供商识别与配色（同一提供商 → 同一种颜色）----
+  const PALETTE = ['#2563eb','#7c3aed','#db2777','#ea580c','#16a34a','#0891b2','#dc2626','#4f46e5','#ca8a04','#0d9488','#9333ea','#65a30d'];
+  const providerColor = {};        // 提供商名 -> 颜色（一旦分配不再变动）
+
+  // 提供商：优先取 vendor；若为 Custom/自定义 这类占位值，则用 name（WorkBuddy 自定义模型里 name 常是提供商）
+  function providerOf(s) {
+    if (!s) return '未知';
+    const v = String(s.vendor == null ? '' : s.vendor).trim();
+    if (v && !/^(custom|自定义|其他|other)$/i.test(v)) return v;
+    const n = String(s.name == null ? '' : s.name).trim();
+    return n || '未知';
+  }
+  // 模型名称：name 与提供商同名时，说明名称字段实际是提供商，此时用 id 作为模型名
+  function modelLabel(s) {
+    if (!s) return '';
+    const p = providerOf(s);
+    const n = String(s.name == null ? '' : s.name).trim();
+    return (n && n !== p) ? n : String(s.id || '');
+  }
+  function colorFor(prov) {
+    if (!providerColor[prov]) providerColor[prov] = PALETTE[Object.keys(providerColor).length % PALETTE.length];
+    return providerColor[prov];
+  }
+  function hostOf(s) {
+    try { return s && s.url ? new URL(s.url).host : ''; } catch (e) { return ''; }
+  }
+  // 排序：先按提供商（拉丁名在前、中文名在后），再按模型名称（自然序，数字不按字符串比）
+  function provKey(p) {
+    const t = String(p == null ? '' : p);
+    return (t.charCodeAt(0) < 128 ? '0' : '1') + t.toLowerCase();
+  }
+  function sortedIds() {
+    return order.slice().sort((a, b) => {
+      const A = snaps[a], B = snaps[b];
+      if (!A || !B) return 0;
+      const c = provKey(providerOf(A)).localeCompare(provKey(providerOf(B)), 'en', { numeric: true });
+      if (c !== 0) return c;
+      return modelLabel(A).localeCompare(modelLabel(B), 'en', { numeric: true, sensitivity: 'base' });
+    });
+  }
+  function ensureProviderColors(ids) {
+    ids.forEach((id) => { const s = snaps[id]; if (s) colorFor(providerOf(s)); });
+  }
+
+  function setConnect(ok, text) {
+    els.connDot.className = 'dot ' + (ok ? 'live' : 'down');
+    els.connText.textContent = text;
+  }
+  function fmtTime(ts) {
+    return new Date(ts).toLocaleTimeString('zh-CN', { hour12: false });
+  }
+  // 根据 config 渲染顶部徽标与底部提示（真实/模拟）
+  function applyMode(cfg) {
+    if (!cfg) return;
+    const real = !cfg.simulate;
+    els.srcBadge.textContent = real ? '真实' : '模拟';
+    els.srcBadge.className = 'badge ' + (real ? 'real' : 'sim');
+    if (real) {
+      els.notice.innerHTML = '真实探测模式：每 ' + (cfg.intervalMin || 9) + '~' + (cfg.intervalMax || 10) +
+        ' 分钟自动探测一次各模型 API 的延迟与可用性。需要增删模型请前往 <a class="dlbtn" href="/settings">⚙ 设置</a>。';
+    } else {
+      els.notice.innerHTML = '当前为<strong>模拟模式</strong>，展示的是演示数据（各模型轨迹不同）。接入真实监控：编辑 <code>config.json</code>，把 <code>simulate</code> 改为 <code>false</code> 后重启本服务。';
+    }
+  }
+
+  function ensureModel(id) {
+    if (!historyMap[id]) historyMap[id] = [];
+    if (order.indexOf(id) < 0) order.push(id);
+  }
+
+  function renderCards() {
+    let ids = sortedIds();
+    ensureProviderColors(ids);
+
+    // 应用供应商筛选
+    if (selectedProv !== 'all') {
+      ids = ids.filter(id => {
+        const s = snaps[id];
+        return s && providerOf(s) === selectedProv;
+      });
+    }
+
+    // 汇总（嵌入筛选行，只读）
+    const counts = { '空闲':0, '正常':0, '繁忙':0, '拥堵':0, '不可达':0, '总数':0 };
+    ids.forEach(id => { const s = snaps[id]; if (s && s.busy) { counts[s.busy.level] = (counts[s.busy.level]||0)+1; counts['总数']++; } });
+
+    // 供应商筛选按钮（单行，同大小卡片样式）
+    // 注意：先计算所有提供商（不受筛选影响），确保按钮始终显示
+    const allIds = sortedIds();
+    ensureProviderColors(allIds);
+    const provs = [];
+    allIds.forEach(id => { const s = snaps[id]; if (!s) return; const p = providerOf(s); if (provs.indexOf(p) < 0) provs.push(p); });
+    let provHtml = '<div class="prov-btn ' + (selectedProv === 'all' ? 'on' : '') + '" data-prov="all"><span class="pv-n">' + counts['总数'] + '</span><span class="pv-k"><span class="pv-dot" style="background:var(--muted)"></span>全部</span></div>';
+    provs.forEach(p => {
+      const n = allIds.filter(x => snaps[x] && providerOf(snaps[x]) === p).length;
+      const isOn = selectedProv === p;
+      const isDim = selectedProv !== 'all' && !isOn;
+      provHtml += '<div class="prov-btn' + (isOn ? ' on' : '') + (isDim ? ' dim' : '') + '" data-prov="' + escapeHtml(p) + '"><span class="pv-n">' + n + '</span><span class="pv-k"><span class="pdot" style="background:' + colorFor(p) + '"></span>' + escapeHtml(p) + '</span></div>';
+    });
+    // 分割线 + 汇总统计
+    provHtml += '<div class="prov-sep"></div>';
+    const levelCounts = ['空闲','正常','繁忙','拥堵','不可达'].map(k => {
+      const v = counts[k] || 0;
+      const color = k === '空闲' ? 'var(--idle)' : k === '正常' ? 'var(--normal)' : k === '繁忙' ? 'var(--busy)' : k === '拥堵' ? 'var(--heavy)' : 'var(--inreachable)';
+      return '<div class="sum" style="color:' + color + '"><div class="n">' + v + '</div><div class="k">' + k + '</div></div>';
+    }).join('');
+    provHtml += levelCounts;
+    els.filterRow.innerHTML = provHtml;
+
+    // 绑定供应商按钮点击
+    els.filterRow.querySelectorAll('.prov-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const newProv = btn.getAttribute('data-prov');
+        els.filterRow.querySelectorAll('.prov-btn').forEach((b) => {
+          b.classList.remove('on', 'dim');
+          if (b === btn) {
+            b.classList.add('on');
+          } else {
+            b.classList.add('dim');
+          }
+        });
+        selectedProv = newProv;
+        renderCards();
+        drawChart();
+      });
+    });
+
+    // 卡片（按 提供商 → 模型名称 排序）
+    els.grid.innerHTML = ids.map(id => {
+      const s = snaps[id];
+      if (!s) return '';
+      const b = s.busy || { score: 0, level: '—' };
+      const color = LEVEL_COLOR[b.level] || 'var(--muted)';
+      const prov = providerOf(s);
+      const pc = colorFor(prov);
+      const label = modelLabel(s) || id;
+      const host = hostOf(s);
+      const sub = host || (s.id && s.id !== label ? s.id : '');
+      const ttft = s.ttftMs == null ? '—' : s.ttftMs + '<small>ms</small>';
+      const total = s.totalMs == null ? '—' : s.totalMs + '<small>ms</small>';
+      const tps = s.tokensPerSec == null ? '—' : Math.round(s.tokensPerSec) + '<small>t/s</small>';
+      const status = s.available ? '<b style="color:var(--idle)">正常</b>' : '<b style="color:var(--heavy)">失败</b>';
+      const ttftWarn = s.ttftMs != null && s.ttftMs >= 2500;
+      const totalWarn = s.totalMs != null && s.totalMs >= 3000;
+      const err = s.error ? '<div class="merr">⚠ ' + s.error + (s.status ? ' (HTTP ' + s.status + ')' : '') + '</div>' : '';
+      const srcText = s.hasPassive ? (s.source === 'passive' ? '被动' : '混合') : '主动';
+      const srcClass = s.hasPassive ? (s.source === 'passive' ? 'src-passive' : 'src-mix') : 'src-active';
+      const info =
+        (s.busy && s.busy.throttleNote ? '<div class="minfo warn">'+escapeHtml(s.busy.throttleNote)+'</div>' : '') +
+        ((s.rateLimitRemaining != null && s.rateLimitLimit != null) ? '<div class="minfo">配额 '+s.rateLimitRemaining+'/'+s.rateLimitLimit+'</div>' : '');
+      return '' +
+        '<div class="mcard'+(id===selectedId?' sel':'')+'" data-id="'+escapeHtml(id)+'" style="border-left-color:'+pc+'">' +
+          '<div class="mhead"><span class="mname">'+escapeHtml(label)+'</span><span class="mtag '+srcClass+'">'+srcText+'</span></div>' +
+          '<div class="mid"><span class="mchip" style="background:'+pc+'">'+escapeHtml(prov)+'</span>'+(sub?'<span>'+escapeHtml(sub)+'</span>':'')+'</div>' +
+          '<div class="mrow">' +
+            '<div class="mgauge">' +
+              '<svg width="92" height="92" viewBox="0 0 92 92">' +
+                '<circle cx="46" cy="46" r="'+RING_R+'" fill="none" stroke="#eef1f5" stroke-width="9" stroke-linecap="round" transform="rotate(135 46 46)" stroke-dasharray="'+RING_VIS+' '+FULL_C+'"/>' +
+                '<circle class="ring-val" cx="46" cy="46" r="'+RING_R+'" fill="none" stroke="'+color+'" stroke-width="9" stroke-linecap="round" transform="rotate(135 46 46)" stroke-dasharray="'+((b.score / 100) * RING_VIS).toFixed(1)+' '+FULL_C+'"/>' +
+              '</svg>' +
+              '<div class="num">'+b.score+'</div>' +
+              '<div class="lvl" style="color:'+color+'">'+b.level+'</div>' +
+            '</div>' +
+            '<div class="mstats">' +
+              '<div class="st'+(ttftWarn?' warn':'')+'">首包<b>'+ttft+'</b></div>' +
+              '<div class="st'+(totalWarn?' warn':'')+'">总延迟<b>'+total+'</b></div>' +
+              '<div class="st">吞吐<b>'+tps+'</b></div>' +
+              '<div class="st">状态'+status+'</div>' +
+            '</div>' +
+          '</div>' + info + err +
+        '</div>';
+    }).join('');
+
+    // 绑定点击
+    els.grid.querySelectorAll('.mcard').forEach(c => {
+      c.addEventListener('click', () => {
+        selectedId = c.getAttribute('data-id');
+        renderCards(); drawChart();
+      });
+    });
+
+    // 选中项兜底：默认选第一个（避免下拉显示空白）
+    if (!selectedId || ids.indexOf(selectedId) < 0) selectedId = ids[0] || null;
+    updateDl();
+    renderDropdown(ids);
+  }
+
+  // ---- 自定义下拉（模型选择）----
+  function renderDropdown(ids) {
+    const q = (els.ddFilter.value || '').trim().toLowerCase();
+    const sig = ids.join('|') + '#' + (selectedId || '') + '#' + q;
+    if (sig === ddSig) return;
+    ddSig = sig;
+
+    const list = ids.filter(id => {
+      if (!q) return true;
+      const s = snaps[id]; if (!s) return false;
+      return (modelLabel(s) + ' ' + (s.id || '') + ' ' + providerOf(s)).toLowerCase().indexOf(q) >= 0;
+    });
+    els.ddList.innerHTML = list.length ? list.map(id => {
+      const s = snaps[id];
+      return '<div class="dd-item'+(id===selectedId?' on':'')+'" data-id="'+escapeHtml(id)+'">' +
+        '<span class="pdot" style="background:'+colorFor(providerOf(s))+'"></span>' +
+        '<span class="t">'+escapeHtml(modelLabel(s)||id)+'</span>' +
+        '<span class="p">'+escapeHtml(providerOf(s))+'</span></div>';
+    }).join('') : '<div class="dd-empty">无匹配模型</div>';
+
+    const cur = selectedId && snaps[selectedId] ? snaps[selectedId] : null;
+    els.ddLabel.innerHTML = cur
+      ? '<span class="pdot" style="background:'+colorFor(providerOf(cur))+'"></span><span>'+escapeHtml(modelLabel(cur)||selectedId)+'</span>'
+      : '选择模型';
+
+    els.ddList.querySelectorAll('.dd-item').forEach(el => {
+      el.addEventListener('click', () => {
+        selectedId = el.getAttribute('data-id');
+        closeDd();
+        renderCards(); drawChart();
+      });
+    });
+  }
+  function openDd() { els.ddPanel.classList.add('open'); try { els.ddFilter.focus(); } catch (e) {} }
+  function closeDd() { els.ddPanel.classList.remove('open'); }
+
+  function escapeHtml(s) { return (s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+  // ---- 趋势图 ----
+  const canvas = document.getElementById('chart');
+  const ctx = canvas.getContext('2d');
+  function resizeCanvas() {
+    const ratio = window.devicePixelRatio || 1;
+    canvas.width = canvas.clientWidth * ratio;
+    canvas.height = canvas.clientHeight * ratio;
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+  }
+  function fmtTick(t, span) {
+    const d = new Date(t), p2 = (n) => (n < 10 ? '0' : '') + n;
+    const md = p2(d.getMonth() + 1) + '-' + p2(d.getDate());
+    if (span > 36 * 3600e3 || d.getHours() === 0 && d.getMinutes() === 0) return md;
+    return p2(d.getHours()) + ':' + p2(d.getMinutes());
+  }
+  function drawChart() {
+    resizeCanvas();
+    const W = canvas.clientWidth, H = canvas.clientHeight;
+    const padL = 34, padR = 14, padT = 10, padB = 28;
+    ctx.clearRect(0, 0, W, H);
+    const yFor = (v) => padT + (1 - v / 100) * (H - padT - padB);
+    ctx.font = '11px sans-serif'; ctx.textBaseline = 'middle';
+    ctx.strokeStyle = '#eef1f5'; ctx.fillStyle = '#9ca3af';
+    for (let v = 0; v <= 100; v += 25) {
+      const y = yFor(v);
+      ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(W - padR, y); ctx.stroke();
+      ctx.fillText(v, 6, y);
+    }
+    for (const [t, c] of [[25,'#0ea5e9'],[55,'#f59e0b'],[80,'#ef4444']]) {
+      const y = yFor(t);
+      ctx.strokeStyle = c + '55'; ctx.setLineDash([4,4]);
+      ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(W - padR, y); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    const all = (historyMap[selectedId] || []);
+    let pts;
+    if (rangeMs > 0 && all.length > 0) {
+      // 使用时间范围筛选：基于数据实际时间范围，不依赖 Date.now()
+      const maxTs = Math.max(...all.map(h => h.ts));
+      const minTs = Math.min(...all.map(h => h.ts));
+      const dataSpan = maxTs - minTs;
+      const cutoff = maxTs - rangeMs;
+      pts = all.filter((h) => h.ts >= cutoff).map((h) => ({ t: h.ts, s: h.score }));
+      // 如果筛选后数据太少，显示最近 rangeMs 内的数据
+      if (pts.length < 2) pts = all.slice(-Math.ceil(rangeMs / Math.max(1, dataSpan / all.length)));
+    } else {
+      pts = all.map((h) => ({ t: h.ts, s: h.score }));
+    }
+    const xFor = (i) => padL + (pts.length > 1 ? (i / (pts.length - 1)) * (W - padL - padR) : 0);
+    // 横轴时间刻度（自适应数量，避免重叠）
+    if (pts.length >= 2) {
+      const span = pts[pts.length - 1].t - pts[0].t || 1;
+      const inner = W - padL - padR;
+      const tickN = Math.max(2, Math.min(6, Math.floor(inner / 78) + 1));
+      const totalGap = pts.length - 1;
+      ctx.font = '11px sans-serif'; ctx.textBaseline = 'top';
+      for (let k = 0; k < tickN; k++) {
+        const rawIdx = (k * totalGap) / Math.max(1, tickN - 1);
+        const idx = Math.min(Math.round(rawIdx), totalGap);
+        const x = padL + (pts.length > 1 ? (idx / totalGap) * inner : 0);
+        ctx.strokeStyle = '#f1f5f9';
+        ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, H - padB); ctx.stroke();
+        const label = fmtTick(pts[idx].t, span);
+        ctx.fillStyle = '#9ca3af';
+        ctx.textAlign = k === 0 ? 'left' : (k === tickN - 1 ? 'right' : 'center');
+        ctx.fillText(label, x, H - padB + 7);
+      }
+      ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    }
+    if (pts.length >= 2) {
+      ctx.beginPath();
+      pts.forEach((p, i) => { const x = xFor(i), y = yFor(p.s); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+      ctx.lineTo(xFor(pts.length - 1), H - padB); ctx.lineTo(xFor(0), H - padB); ctx.closePath();
+      const g = ctx.createLinearGradient(0, padT, 0, H - padB);
+      g.addColorStop(0, 'rgba(14,165,233,.22)'); g.addColorStop(1, 'rgba(14,165,233,.02)');
+      ctx.fillStyle = g; ctx.fill();
+      ctx.beginPath();
+      pts.forEach((p, i) => { const x = xFor(i), y = yFor(p.s); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+      ctx.strokeStyle = '#0ea5e9'; ctx.lineWidth = 2; ctx.stroke();
+      const last = pts[pts.length - 1];
+      ctx.fillStyle = '#0ea5e9';
+      ctx.beginPath(); ctx.arc(xFor(pts.length - 1), yFor(last.s), 3, 0, Math.PI * 2); ctx.fill();
+    }
+    els.chartHint.textContent = '共 ' + pts.length + ' 个采样点' + (selectedId ? ' · ' + selectedId : '');
+  }
+  // 自定义下拉交互
+  els.ddBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (els.ddPanel.classList.contains('open')) { closeDd(); }
+    else { ddSig = ''; renderDropdown(sortedIds()); openDd(); }
+  });
+  els.ddPanel.addEventListener('click', (e) => e.stopPropagation());
+  els.ddFilter.addEventListener('click', (e) => e.stopPropagation());
+  els.ddFilter.addEventListener('input', () => { ddSig = ''; renderDropdown(sortedIds()); });
+  document.addEventListener('click', () => closeDd());
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDd(); });
+
+  // 时间范围切换
+  document.querySelectorAll('#ranges button').forEach((b) => {
+    b.addEventListener('click', () => {
+      document.querySelectorAll('#ranges button').forEach((x) => x.classList.remove('on'));
+      b.classList.add('on');
+      rangeMs = Number(b.getAttribute('data-ms'));
+      drawChart();
+    });
+  });
+
+  // 鉴权：从 URL ?token= 或 localStorage 读取访问令牌，拼到每个 API 请求
+  function getToken() {
+    try {
+      const p = new URLSearchParams(location.search).get('token');
+      if (p) return p;
+      return localStorage.getItem('mm_token') || '';
+    } catch (e) { return ''; }
+  }
+  function authQuery() {
+    const t = getToken();
+    return t ? ('?token=' + encodeURIComponent(t)) : '';
+  }
+  function apiFetch(path, opts) {
+    // 若有 token，注入到 URL 查询参数（服务端 /api/* 支持 ?token= 鉴权）
+    const t = getToken();
+    const finalPath = t ? path + (path.indexOf('?') >= 0 ? '&' : '?') + 'token=' + encodeURIComponent(t) : path;
+    return fetch(finalPath, opts).then((res) => {
+      if (res.status === 401) {
+        const input = prompt('该服务已启用访问鉴权。请输入访问令牌：');
+        if (input && input.trim()) {
+          try { localStorage.setItem('mm_token', input.trim()); } catch (e) {}
+          return apiFetch(path, opts); // 重新读取 localStorage 注入
+        }
+      }
+      return res;
+    });
+  }
+  const TOKEN = getToken();
+
+  function updateDl() {
+    els.dlCsv.href = '/api/csv' + authQuery() + (selectedId ? (authQuery() ? '&' : '?') + 'model=' + encodeURIComponent(selectedId) : '');
+  }
+
+  // ---- 立即探测按钮 ----
+  els.probeBtn.addEventListener('click', () => {
+    if (els.probeBtn.disabled) return;
+    els.probeBtn.disabled = true;
+    els.probeBtn.textContent = '探测中…';
+    awaitingProbe = true;
+    apiFetch('/api/probe', { method: 'POST' }).catch(() => {});
+    // 兜底：若 10 秒内没有新的 SSE 推送，也恢复按钮
+    setTimeout(() => {
+      if (awaitingProbe) { awaitingProbe = false; els.probeBtn.disabled = false; els.probeBtn.textContent = '⟳ 立即探测'; }
+    }, 10000);
+  });
+
+  function ingest(models, ts) {
+    // 剪枝：广播中已不存在的模型（被删除）从界面移除
+    const ids = new Set(models.map(m => m.id));
+    order.slice().forEach(id => {
+      if (!ids.has(id)) { order = order.filter(x => x !== id); delete snaps[id]; delete historyMap[id]; }
+    });
+    models.forEach(s => {
+      ensureModel(s.id);
+      snaps[s.id] = s;
+      const h = historyMap[s.id];
+      const last = h[h.length - 1];
+      if (!last || last.ts !== ts) {
+        h.push({ ts, score: s.busy ? s.busy.score : 0, level: s.busy ? s.busy.level : '—' });
+        if (h.length > 6000) h.shift();
+      }
+    });
+    els.updated.textContent = '更新 ' + fmtTime(ts);
+    renderCards(); drawChart();
+  }
+
+  // ---- 数据接入：SSE 优先，失败回退轮询 ----
+  function connectSSE() {
+    const es = new EventSource('/api/stream' + authQuery());
+    es.onopen = () => setConnect(true, '实时连接');
+    es.onmessage = (ev) => {
+      try {
+        const d = JSON.parse(ev.data);
+        if (d.config) applyMode(d.config);
+        if (d.models) ingest(d.models, d.ts);
+        if (awaitingProbe) { awaitingProbe = false; els.probeBtn.disabled = false; els.probeBtn.textContent = '⟳ 立即探测'; }
+      } catch (e) {}
+    };
+    es.onerror = () => { setConnect(false, 'SSE 断开，转轮询'); es.close(); connectPoll(); };
+  }
+  async function connectPoll() {
+    try {
+      const r = await apiFetch('/api/status');
+      const d = await r.json();
+      (d.models || []).forEach(m => {
+        ensureModel(m.id, m);
+        // 用历史种子回填
+        if (m.history && m.history.length) {
+          historyMap[m.id] = m.history.slice();
+          const last = m.history[m.history.length - 1];
+          snaps[m.id] = Object.assign({ id: m.id, name: m.name, vendor: m.vendor, url: m.url, available: true }, { busy: { score: last.score, level: last.level } });
+        }
+      });
+      if (d.config) applyMode(d.config);
+      renderCards(); drawChart();
+    } catch (e) {}
+    setTimeout(connectPoll, 3000);
+  }
+
+  apiFetch('/api/status').then(r => r.json()).then(d => {
+    (d.models || []).forEach(m => {
+      ensureModel(m.id, m);
+      if (m.history && m.history.length) {
+        historyMap[m.id] = m.history.slice();
+        const last = m.history[m.history.length - 1];
+        snaps[m.id] = { id: m.id, name: m.name, vendor: m.vendor, url: m.url, available: true, busy: { score: last.score, level: last.level } };
+      }
+    });
+    if (d.config) applyMode(d.config);
+    renderCards(); drawChart();
+  }).catch(() => {});
+  connectSSE();
+  window.addEventListener('resize', drawChart);
+</script>
+</body>
+</html>
