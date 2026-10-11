@@ -357,7 +357,7 @@
       const status = s.available ? '<b style="color:var(--idle)">正常</b>' : '<b style="color:var(--heavy)">失败</b>';
       const ttftWarn = s.ttftMs != null && s.ttftMs >= 2500;
       const totalWarn = s.totalMs != null && s.totalMs >= 3000;
-      const err = s.error ? '<div class="merr">⚠ ' + s.error + (s.status ? ' (HTTP ' + s.status + ')' : '') + '</div>' : '';
+      const err = s.error ? '<div class="merr">⚠ ' + escapeHtml(String(s.error)) + (s.status ? ' (HTTP ' + escapeHtml(String(s.status)) + ')' : '') + '</div>' : '';
       const srcText = s.hasPassive ? (s.source === 'passive' ? '被动' : '混合') : '主动';
       const srcClass = s.hasPassive ? (s.source === 'passive' ? 'src-passive' : 'src-mix') : 'src-active';
       const info =
@@ -436,7 +436,7 @@
   function openDd() { els.ddPanel.classList.add('open'); try { els.ddFilter.focus(); } catch (e) {} }
   function closeDd() { els.ddPanel.classList.remove('open'); }
 
-  function escapeHtml(s) { return (s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+  function escapeHtml(s) { return (s||'').replace(/[&<>"'`]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','`':'&#96;'}[c])); }
 
   // ---- 趋势图 ----
   const canvas = document.getElementById('chart');
