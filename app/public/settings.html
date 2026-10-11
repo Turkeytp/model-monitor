@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="color-scheme" content="dark light">
+<meta name="referrer" content="no-referrer">
+<meta name="dnt" content="1">
 <title>模型设置 · 繁忙度监控</title>
 <style>
   :root {
@@ -20,6 +23,16 @@
   .links a:hover { background: #f0f9ff; }
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); padding: 18px; margin-bottom: 18px; }
   .card h2 { font-size: 15px; margin: 0 0 14px; }
+  .btn { border: 0; background: var(--accent); color: #fff; padding: 8px 14px; border-radius: 6px; font: inherit; font-size: 13px; cursor: pointer; }
+  .btn:hover { filter: brightness(.95); }
+  .btn.sec { background: #f3f4f6; color: var(--ink); }
+  .btn.danger { background: var(--danger); }
+  .btn[disabled] { opacity: .55; cursor: not-allowed; }
+  .btn.probe { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; font-size: 13px; }
+  .btn.probe .pdot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; background: #94a3b8; }
+  .btn.probe .pdot.ok { background: #16a34a; }
+  .btn.probe .pdot.bad { background: #ef4444; }
+  .langbtn { position: absolute; top: 12px; right: 12px; font-size: 12px; padding: 5px 11px; background: #fff; border: 1px solid var(--line); border-radius: 999px; cursor: pointer; z-index: 10; }
 
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
@@ -60,71 +73,123 @@
 </style>
 </head>
 <body>
-<div class="wrap">
+<div class="wrap" style="position:relative;">
   <header class="top">
     <div class="title">
-      <h1>模型设置</h1>
-      <p>增删改被监控的模型；改动即时写入 config.json 并立即探测验证</p>
+      <h1 data-i18n="pageTitle">模型设置</h1>
+      <p data-i18n="pageSub">增删改被监控的模型；改动即时写入 config.json 并立即探测验证</p>
     </div>
     <div class="links">
-      <a href="/">← 返回仪表盘</a>
-      <button class="btn warn" id="probeBtn" style="margin-left:8px;">立即探测一次</button>
+      <a href="/" data-i18n="backDashboard">← 返回仪表盘</a>
+      <button class="btn warn" id="probeBtn" style="margin-left:8px;" data-i18n="probeOnce">立即探测一次</button>
     </div>
+    <button class="langbtn" id="langToggle">EN</button>
   </header>
 
   <div class="card">
-    <h2>当前监控的模型</h2>
-    <div id="list"><div class="empty">加载中…</div></div>
+    <h2 data-i18n="sectionCurrent">当前监控的模型</h2>
+    <div id="list"><div class="empty" data-i18n="loading">加载中…</div></div>
   </div>
 
   <div class="card">
-    <p class="form-title" id="formTitle">新增模型</p>
+    <p class="form-title" id="formTitle" data-i18n="formTitleNew">新增模型</p>
     <form id="modelForm">
       <input type="hidden" id="f_edit" value="" />
       <div class="form-grid">
         <div class="field">
-          <label>模型标识 id（必填，唯一）</label>
+          <label data-i18n="labelId">模型标识 id（必填，唯一）</label>
           <input type="text" id="f_id" placeholder="如 DeepSeek-V4-Flash" autocomplete="off" />
         </div>
         <div class="field">
-          <label>显示名称 name</label>
+          <label data-i18n="labelName">显示名称 name</label>
           <input type="text" id="f_name" placeholder="如 AMD" autocomplete="off" />
         </div>
         <div class="field">
-          <label>厂商 vendor</label>
+          <label data-i18n="labelVendor">厂商 vendor</label>
           <input type="text" id="f_vendor" placeholder="Custom" autocomplete="off" />
         </div>
         <div class="field">
-          <label>接口地址 url（必填，http(s)）</label>
+          <label data-i18n="labelUrl">接口地址 url（必填，http(s)）</label>
           <input type="text" id="f_url" placeholder="https://.../v1" autocomplete="off" />
         </div>
         <div class="field full">
-          <label>API Key（留空表示无鉴权）</label>
+          <label data-i18n="labelKey">API Key（留空表示无鉴权）</label>
           <input type="password" id="f_key" placeholder="sk-... / rc-..." autocomplete="new-password" />
         </div>
         <div class="field full">
-          <label>能力（仅记录，不影响探测）</label>
+          <label data-i18n="labelCaps">能力（仅记录，不影响探测）</label>
           <div class="checks">
-            <label><input type="checkbox" id="f_tool" /> 工具调用</label>
-            <label><input type="checkbox" id="f_img" /> 图像</label>
-            <label><input type="checkbox" id="f_reason" /> 推理</label>
-            <label><input type="checkbox" id="f_proto" /> 自定义协议</label>
+            <label><input type="checkbox" id="f_tool" /> <span data-i18n="capTool">工具调用</span></label>
+            <label><input type="checkbox" id="f_img" /> <span data-i18n="capImg">图像</span></label>
+            <label><input type="checkbox" id="f_reason" /> <span data-i18n="capReason">推理</span></label>
+            <label><input type="checkbox" id="f_proto" /> <span data-i18n="capProto">自定义协议</span></label>
           </div>
         </div>
       </div>
       <div class="form-actions">
-        <button type="submit" class="btn primary" id="saveBtn">保存</button>
-        <button type="button" class="btn ghost" id="resetBtn">清空</button>
+        <button type="submit" class="btn primary" id="saveBtn" data-i18n="btnSave">保存</button>
+        <button type="button" class="btn ghost" id="resetBtn" data-i18n="btnClear">清空</button>
         <span class="msg" id="formMsg"></span>
       </div>
     </form>
   </div>
 </div>
-
 <script>
   const $ = (id) => document.getElementById(id);
   function esc(s) { return (s || '').replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c])); }
-  function maskKey(k) { if (!k) return '<span style="color:var(--muted)">无</span>'; return '••••' + k.slice(-4); }
+
+  // ---- i18n 翻译字典 ----
+  const I18N = {
+    zh: {
+      pageTitle: '模型设置', pageSub: '增删改被监控的模型；改动即时写入 config.json 并立即探测验证',
+      backDashboard: '← 返回仪表盘', probeOnce: '立即探测一次', probing: '探测中…',
+      sectionCurrent: '当前监控的模型', loading: '加载中…',
+      formTitleNew: '新增模型', editPrefix: '编辑模型：',
+      labelId: '模型标识 id（必填，唯一）', labelName: '显示名称 name',
+      labelVendor: '厂商 vendor', labelUrl: '接口地址 url（必填，http(s)）',
+      labelKey: 'API Key（留空表示无鉴权）', labelCaps: '能力（仅记录，不影响探测）',
+      capTool: '工具调用', capImg: '图像', capReason: '推理', capProto: '自定义协议',
+      btnSave: '保存', btnClear: '清空', btnEdit: '编辑', btnDelete: '删除',
+      emptyNoModel: '暂无模型，请在下方新增。', loadFail: '加载失败：',
+      confirmDel: '确认删除模型「', confirmDelTail: '」？\n该操作会从 config.json 移除它（历史 CSV 仍保留）。',
+      delFail: '删除失败：',
+      msgFillId: '请填写模型标识 id', msgUrlInvalid: 'url 必须以 http(s):// 开头',
+      msgSaveFail: '保存失败：', msgUpdated: '已更新', msgCreated: '已新增，正在探测…',
+      msgKeyKeep: '保持原 Key（如需更换请粘贴完整新 Key）',
+      authPrompt: '该服务已启用访问鉴权。请输入访问令牌：',
+      providerUnknown: '未知', noKey: '无', levelBusy: '不可达',
+      colName: '模型名称', colProv: '提供商', colUrl: '接口地址',
+      colKey: 'Key', colCaps: '能力', colStatus: '最近状态', colAction: '操作',
+      statusUnprobed: '未探测', capNone: '—',
+    },
+    en: {
+      pageTitle: 'Model Settings', pageSub: 'Add / remove / edit monitored models; changes write to config.json and probe immediately',
+      backDashboard: '← Back to dashboard', probeOnce: 'Probe All Now', probing: 'Probing…',
+      sectionCurrent: 'Currently Monitored Models', loading: 'Loading…',
+      formTitleNew: 'Add Model', editPrefix: 'Edit model:',
+      labelId: 'Model id (required, unique)', labelName: 'Display name',
+      labelVendor: 'Vendor', labelUrl: 'Endpoint URL (required, http(s))',
+      labelKey: 'API Key (blank = no auth)', labelCaps: 'Capabilities (record only, not used in probe)',
+      capTool: 'Tool Call', capImg: 'Image', capReason: 'Reasoning', capProto: 'Custom Protocol',
+      btnSave: 'Save', btnClear: 'Reset', btnEdit: 'Edit', btnDelete: 'Delete',
+      emptyNoModel: 'No models yet. Add one below.', loadFail: 'Failed to load: ',
+      confirmDel: 'Delete model "', confirmDelTail: '"?\nIt will be removed from config.json (historical CSV entries are preserved).',
+      delFail: 'Delete failed: ',
+      msgFillId: 'Please fill in model id', msgUrlInvalid: 'url must start with http(s)://',
+      msgSaveFail: 'Save failed: ', msgUpdated: 'Updated', msgCreated: 'Created, probing…',
+      msgKeyKeep: 'Keep existing key (paste full new key to replace)',
+      authPrompt: 'This service requires an access token. Enter it below:',
+      providerUnknown: 'Unknown', noKey: 'None', levelBusy: 'Unreachable',
+      colName: 'Model', colProv: 'Provider', colUrl: 'Endpoint',
+      colKey: 'Key', colCaps: 'Caps', colStatus: 'Last Status', colAction: 'Action',
+      statusUnprobed: 'Not probed', capNone: '—',
+    }
+  };
+  let curLang = localStorage.getItem('mm_lang') || 'zh';
+  function t(key) { const d = I18N[curLang]; return d[key] !== undefined ? d[key] : key; }
+  function capName(c) { return c==='tool'?t('capTool'):c==='img'?t('capImg'):c==='reason'?t('capReason'):c==='proto'?t('capProto'):c; }
+
+  function maskKey(k) { if (!k) return '<span style="color:var(--muted)">' + t('noKey') + '</span>'; return '••••' + k.slice(-4); }
 
   // ---- 鉴权：从 URL ?token= 或 localStorage 读取访问令牌 ----
   function getToken() {
@@ -135,11 +200,11 @@
     } catch (e) { return ''; }
   }
   function apiFetch(path, opts) {
-    const t = getToken();
-    const finalPath = t ? path + (path.indexOf('?') >= 0 ? '&' : '?') + 'token=' + encodeURIComponent(t) : path;
+    const tk = getToken();
+    const finalPath = tk ? path + (path.indexOf('?') >= 0 ? '&' : '?') + 'token=' + encodeURIComponent(tk) : path;
     return fetch(finalPath, opts).then((res) => {
       if (res.status === 401) {
-        const input = prompt('该服务已启用访问鉴权。请输入访问令牌：');
+        const input = prompt(t('authPrompt'));
         if (input && input.trim()) {
           try { localStorage.setItem('mm_token', input.trim()); } catch (e) {}
           return apiFetch(path, opts);
@@ -153,11 +218,11 @@
   const PALETTE = ['#2563eb','#7c3aed','#db2777','#ea580c','#16a34a','#0891b2','#dc2626','#4f46e5','#ca8a04','#0d9488','#9333ea','#65a30d'];
   const providerColor = {};
   function providerOf(m) {
-    if (!m) return '未知';
+    if (!m) return t('providerUnknown');
     const v = String(m.vendor == null ? '' : m.vendor).trim();
     if (v && !/^(custom|自定义|其他|other)$/i.test(v)) return v;
     const n = String(m.name == null ? '' : m.name).trim();
-    return n || '未知';
+    return n || t('providerUnknown');
   }
   function modelLabel(m) {
     if (!m) return '';
@@ -171,8 +236,8 @@
   }
   // 排序键：拉丁名在前、中文名在后；同组按名称自然序
   function provKey(p) {
-    const t = String(p == null ? '' : p);
-    return (t.charCodeAt(0) < 128 ? '0' : '1') + t.toLowerCase();
+    const pv = String(p == null ? '' : p);
+    return (pv.charCodeAt(0) < 128 ? '0' : '1') + pv.toLowerCase();
   }
 
   async function loadList() {
@@ -180,7 +245,7 @@
       const r = await apiFetch('/api/models');
       const models = await r.json();
       const box = $('list');
-      if (!models.length) { box.innerHTML = '<div class="empty">暂无模型，请在下方新增。</div>'; return; }
+      if (!models.length) { box.innerHTML = '<div class="empty">' + t('emptyNoModel') + '</div>'; return; }
       // 排序：先按提供商，再按模型名称
       models.sort((a, b) => {
         const c = provKey(providerOf(a)).localeCompare(provKey(providerOf(b)), 'en', { numeric: true });
@@ -188,26 +253,26 @@
         return modelLabel(a).localeCompare(modelLabel(b), 'en', { numeric: true, sensitivity: 'base' });
       });
       models.forEach(m => colorFor(providerOf(m)));
-      box.innerHTML = '<table><thead><tr><th>模型名称</th><th>提供商</th><th>接口地址</th><th>Key</th><th>能力</th><th>最近状态</th><th>操作</th></tr></thead><tbody>' +
+      box.innerHTML = '<table><thead><tr><th>' + t('colName') + '</th><th>' + t('colProv') + '</th><th>' + t('colUrl') + '</th><th>' + t('colKey') + '</th><th>' + t('colCaps') + '</th><th>' + t('colStatus') + '</th><th>' + t('colAction') + '</th></tr></thead><tbody>' +
         models.map(m => {
           const st = m.last;
-          const stHtml = st ? ('<span class="pill ' + (st.level === '不可达' ? 'bad' : 'ok') + '">' + st.level + ' ' + st.score + '</span>') : '<span class="pill">未探测</span>';
-          const caps = ['tool','img','reason','proto'].filter(c => m['supports' + c[0].toUpperCase() + c.slice(1)] || (c==='proto'&&m.useCustomProtocol)).map(c => ({tool:'工具',img:'图像',reason:'推理',proto:'协议'}[c])).join('/');
+          const stHtml = st ? ('<span class="pill ' + (st.level === t('levelBusy') ? 'bad' : 'ok') + '">' + st.level + ' ' + st.score + '</span>') : '<span class="pill">' + t('statusUnprobed') + '</span>';
+          const caps = ['tool','img','reason','proto'].filter(c => m['supports' + c[0].toUpperCase() + c.slice(1)] || (c==='proto'&&m.useCustomProtocol)).map(c => capName(c)).join('/');
           const prov = providerOf(m);
           return '<tr>' +
             '<td class="id">' + esc(modelLabel(m) || m.id) + (modelLabel(m) !== m.id ? '<div style="font-weight:400;font-size:11px;color:var(--muted)">' + esc(m.id) + '</div>' : '') + '</td>' +
             '<td><span class="pname"><i class="pdot" style="background:' + colorFor(prov) + '"></i>' + esc(prov) + '</span></td>' +
             '<td class="url">' + esc(m.url || '') + '</td>' +
             '<td>' + (m.apiKeyMasked || maskKey(m.apiKey)) + '</td>' +
-            '<td class="caps">' + (caps ? '<span>' + caps + '</span>' : '<span style="color:var(--muted)">—</span>') + '</td>' +
+            '<td class="caps">' + (caps ? '<span>' + caps + '</span>' : '<span style="color:var(--muted)">' + t('capNone') + '</span>') + '</td>' +
             '<td>' + stHtml + '</td>' +
-            '<td class="row-actions"><button data-edit="' + esc(m.id) + '">编辑</button><button class="del" data-del="' + esc(m.id) + '">删除</button></td>' +
+            '<td class="row-actions"><button data-edit="' + esc(m.id) + '">' + t('btnEdit') + '</button><button class="del" data-del="' + esc(m.id) + '">' + t('btnDelete') + '</button></td>' +
           '</tr>';
         }).join('') + '</tbody></table>';
       box.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => editModel(b.getAttribute('data-edit'))));
       box.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => delModel(b.getAttribute('data-del'))));
     } catch (e) {
-      $('list').innerHTML = '<div class="empty">加载失败：' + esc(e.message) + '</div>';
+      $('list').innerHTML = '<div class="empty">' + t('loadFail') + esc(e.message) + '</div>';
     }
   }
 
@@ -216,7 +281,7 @@
     $('f_id').value = ''; $('f_id').disabled = false;
     $('f_name').value = ''; $('f_vendor').value = 'Custom'; $('f_url').value = '';
     $('f_key').value = ''; $('f_tool').checked = false; $('f_img').checked = false; $('f_reason').checked = false; $('f_proto').checked = false;
-    $('formTitle').textContent = '新增模型';
+    $('formTitle').textContent = t('formTitleNew');
     $('formMsg').textContent = ''; $('formMsg').className = 'msg';
   }
 
@@ -229,24 +294,24 @@
       $('f_id').value = m.id; $('f_id').disabled = true; // id 不可改
       $('f_name').value = m.name || ''; $('f_vendor').value = m.vendor || 'Custom'; $('f_url').value = m.url || '';
       // 明文 Key 永不返回，这里只能拿到掩码；留空代表"保持原 Key"，由后端合并
-      $('f_key').placeholder = m.hasApiKey ? '保持原 Key（如需更换请粘贴完整新 Key）' : 'sk-... / rc-...';
+      $('f_key').placeholder = m.hasApiKey ? t('msgKeyKeep') : 'sk-... / rc-...';
       $('f_key').value = '';
       $('f_tool').checked = !!m.supportsToolCall; $('f_img').checked = !!m.supportsImages;
       $('f_reason').checked = !!m.supportsReasoning; $('f_proto').checked = !!m.useCustomProtocol;
-      $('formTitle').textContent = '编辑模型：' + m.id;
+      $('formTitle').textContent = t('editPrefix') + m.id;
       $('formMsg').textContent = ''; $('formMsg').className = 'msg';
       window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
     } catch (e) {}
   }
 
   async function delModel(id) {
-    if (!confirm('确认删除模型「' + id + '」？\n该操作会从 config.json 移除它（历史 CSV 仍保留）。')) return;
+    if (!confirm(t('confirmDel') + id + t('confirmDelTail'))) return;
     try {
       const r = await apiFetch('/api/models/' + encodeURIComponent(id), { method: 'DELETE' });
       const j = await r.json();
-      if (!r.ok) { alert('删除失败：' + (j.error || r.status)); return; }
+      if (!r.ok) { alert(t('delFail') + (j.error || r.status)); return; }
       await loadList();
-    } catch (e) { alert('删除失败：' + e.message); }
+    } catch (e) { alert(t('delFail') + e.message); }
   }
 
   $('modelForm').addEventListener('submit', async (e) => {
@@ -263,32 +328,56 @@
       supportsReasoning: $('f_reason').checked,
       useCustomProtocol: $('f_proto').checked,
     };
-    if (!payload.id) { showMsg('请填写模型标识 id', false); return; }
-    if (!/^https?:\/\//.test(payload.url)) { showMsg('url 必须以 http(s):// 开头', false); return; }
+    if (!payload.id) { showMsg(t('msgFillId'), false); return; }
+    if (!/^https?:\/\//.test(payload.url)) { showMsg(t('msgUrlInvalid'), false); return; }
     try {
       const url = editId ? ('/api/models/' + encodeURIComponent(editId)) : '/api/models';
       const method = editId ? 'PUT' : 'POST';
       const r = await apiFetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       const j = await r.json();
-      if (!r.ok) { showMsg('保存失败：' + (j.error || r.status), false); return; }
-      showMsg(editId ? '已更新' : '已新增，正在探测…', true);
+      if (!r.ok) { showMsg(t('msgSaveFail') + (j.error || r.status), false); return; }
+      showMsg(editId ? t('msgUpdated') : t('msgCreated'), true);
       resetForm();
       await loadList();
-    } catch (e) { showMsg('保存失败：' + e.message, false); }
+    } catch (e) { showMsg(t('msgSaveFail') + e.message, false); }
   });
 
-  function showMsg(t, ok) { $('formMsg').textContent = t; $('formMsg').className = 'msg ' + (ok ? 'ok' : 'err'); }
+  function showMsg(msg, ok) { $('formMsg').textContent = msg; $('formMsg').className = 'msg ' + (ok ? 'ok' : 'err'); }
 
   $('resetBtn').addEventListener('click', resetForm);
   $('probeBtn').addEventListener('click', async () => {
-    $('probeBtn').disabled = true; $('probeBtn').textContent = '探测中…';
+    $('probeBtn').disabled = true; $('probeBtn').textContent = t('probing');
     try { await apiFetch('/api/probe', { method: 'POST' }); } catch (e) {}
     // 等待探测完成再刷新状态
-    setTimeout(async () => { await loadList(); $('probeBtn').disabled = false; $('probeBtn').textContent = '立即探测一次'; }, 8000);
+    setTimeout(async () => { await loadList(); $('probeBtn').disabled = false; $('probeBtn').textContent = t('probeOnce'); }, 8000);
   });
+
+  // ---- i18n 应用 ----
+  function applyI18n() {
+    document.documentElement.lang = curLang === 'zh' ? 'zh-CN' : 'en';
+    document.title = curLang === 'zh' ? '模型设置 · 繁忙度监控' : 'Model Settings · Busy Monitor';
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+      const key = el.getAttribute('data-i18n');
+      if (I18N.zh[key] !== undefined || I18N.en[key] !== undefined) {
+        el.textContent = t(key);
+      }
+    });
+    const lb = $('langToggle');
+    if (lb) { lb.textContent = curLang === 'zh' ? 'EN' : '中'; lb.title = curLang === 'zh' ? 'Switch to English' : '切换为中文'; }
+  }
+
+  $('langToggle').addEventListener('click', () => {
+    curLang = curLang === 'zh' ? 'en' : 'zh';
+    try { localStorage.setItem('mm_lang', curLang); } catch (e) {}
+    applyI18n();
+    resetForm();
+    loadList();
+  });
+  applyI18n(); // 初始化
 
   resetForm();
   loadList();
 </script>
 </body>
+</html>
 </html>
