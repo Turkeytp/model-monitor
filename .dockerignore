@@ -1,0 +1,9 @@
+# 防止把运行期敏感数据打进镜像
+config.json
+data/
+*.csv
+.env
+.git
+.gitignore
+README.md
+.dockerignore
